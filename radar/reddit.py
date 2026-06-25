@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
+from typing import Optional
 
 from apify_client import ApifyClient
 
@@ -22,6 +24,15 @@ def build_reddit_url(permalink: str) -> str:
     return f"https://reddit.com{permalink}"
 
 
+def _parse_created(value: str) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def matches_flair(flair: str, filter_text: str) -> bool:
     return filter_text.lower() in flair.lower()
 
@@ -41,6 +52,7 @@ def _map_apify_item(item: dict, subreddit: str) -> RedditPost | None:
             subreddit=item.get("subreddit") or subreddit,
             url=url,
             flair=item.get("flair", "") or "",
+            created_at=_parse_created(item.get("created", "")),
         )
 
     # trudax/reddit-scraper-lite output (legacy)
@@ -49,6 +61,7 @@ def _map_apify_item(item: dict, subreddit: str) -> RedditPost | None:
         url = build_reddit_url(item.get("url", ""))
         if not post_id or not url:
             return None
+        created_raw = item.get("createdAt") or item.get("created", "")
         return RedditPost(
             post_id=post_id,
             title=item.get("title", ""),
@@ -57,6 +70,7 @@ def _map_apify_item(item: dict, subreddit: str) -> RedditPost | None:
             subreddit=item.get("parsedCommunityName") or subreddit,
             url=url,
             flair=item.get("flair", "") or "",
+            created_at=_parse_created(created_raw),
         )
 
     return None

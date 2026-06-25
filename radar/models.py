@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal
+from datetime import datetime
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -15,6 +16,7 @@ class RedditPost(BaseModel):
     subreddit: str
     url: str
     flair: str = ""
+    created_at: Optional[datetime] = None
 
 
 class ClassificationResult(BaseModel):

@@ -8,6 +8,7 @@ import sys
 from dotenv import load_dotenv
 
 from radar.classify import classify_post
+from radar.filters import filter_posts_for_classification
 from radar.output import print_opportunity, print_summary
 from radar.reddit import DEFAULT_FLAIR_FILTER, RedditClient, RedditConfigError
 
@@ -48,8 +49,16 @@ def main() -> int:
         print(f'No posts found with flair matching "{args.flair}".')
         return 0
 
+    eligible, skipped = filter_posts_for_classification(posts)
+    for post, reason in skipped:
+        print(f"Filtered (pre-AI): {post.title[:60]} — {reason}", file=sys.stderr)
+
+    if not eligible:
+        print(f'No posts remained after feed filters ({len(skipped)} skipped).')
+        return 0
+
     results = []
-    for post in posts:
+    for post in eligible:
         try:
             result = classify_post(post)
             results.append(result)
@@ -58,7 +67,13 @@ def main() -> int:
         except Exception as exc:
             print(f"Skipped post (classification error): {post.title[:60]} — {exc}", file=sys.stderr)
 
-    print_summary(len(posts), results, flair_filter=args.flair)
+    print_summary(
+        scanned=len(eligible),
+        results=results,
+        flair_filter=args.flair,
+        fetched=len(posts),
+        filtered_out=len(skipped),
+    )
     return 0
 
 

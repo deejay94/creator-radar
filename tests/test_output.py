@@ -2,21 +2,30 @@ from radar.models import ClassificationResult
 from radar.output import format_opportunity
 
 
-def test_format_opportunity_includes_link():
+def test_format_opportunity_matches_template():
     result = ClassificationResult(
-        title="Paid UGC collab",
+        title="[PAID] $20. 30s video. 30+, Male, English speakers. DM",
         subreddit="UGCCreators",
         url="https://reddit.com/r/UGCCreators/comments/abc/test/",
-        niche="Beauty",
-        nicheTier=2,
+        niche="UGC Creators",
+        nicheTier=1,
         isOpportunity=True,
         opportunityTier="A",
         contactMethod="DM",
-        contactInfo="u/brand",
-        reason="Explicit creator hiring with DM contact",
+        contactInfo="u/goodvibesforeveryone",
+        reason="Explicit request for UGC creators with payment mentioned.",
     )
     text = format_opportunity(result)
-    assert "🔥 OPPORTUNITY FOUND" in text
-    assert "Link: https://reddit.com/r/UGCCreators/comments/abc/test/" in text
-    assert "Tier: A" in text
-    assert "Contact: DM — u/brand" in text
+    assert text == (
+        "🔥 TIER A OPPORTUNITY (TIER 1 NICHE)\n"
+        "\n"
+        "Title: [PAID] $20. 30s video. 30+, Male, English speakers. DM\n"
+        "Niche: UGC Creators\n"
+        "Niche Tier: 1\n"
+        "Opportunity Tier: A\n"
+        "\n"
+        "Link: https://reddit.com/r/UGCCreators/comments/abc/test/\n"
+        "Contact: DM u/goodvibesforeveryone\n"
+        "\n"
+        "Reason: Explicit request for UGC creators with payment mentioned."
+    )

@@ -50,15 +50,17 @@ Each run starts an Apify actor job and typically takes 15–60 seconds.
 For each actionable opportunity (tiers A, B, or C):
 
 ```
-🔥 OPPORTUNITY FOUND
+🔥 TIER A OPPORTUNITY (TIER 1 NICHE)
 
 Title: ...
 Niche: ...
-Tier: A
 Niche Tier: 1
+Opportunity Tier: A
+
 Link: https://reddit.com/r/UGCCreators/comments/...
+Contact: DM u/brandname
+
 Reason: ...
-Contact: DM — u/brandname
 ```
 
 Ends with a summary:
@@ -70,6 +72,14 @@ Scanned 5 "Collab Request 🤝" posts · 4 opportunities (2 A, 1 B, 1 C)
 Every opportunity includes a clickable `https://reddit.com/...` link.
 
 ## Classification
+
+Posts are filtered **before** the AI call to cut cost and noise:
+
+- Job seeker posts (creators looking for work, not brands hiring)
+- Memes and discussion threads
+- "How do I…" / advice-seeking posts
+- Meta subreddit content
+- Posts older than 72 hours
 
 The AI assigns:
 
