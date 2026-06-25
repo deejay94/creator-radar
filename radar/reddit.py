@@ -7,6 +7,7 @@ from apify_client import ApifyClient
 from radar.models import RedditPost
 
 DEFAULT_ACTOR_ID = "labrat011/reddit-scraper"
+DEFAULT_FLAIR_FILTER = "Collab Request 🤝"
 
 
 class RedditConfigError(ValueError):
@@ -19,6 +20,10 @@ def build_reddit_url(permalink: str) -> str:
     if permalink.startswith("http"):
         return permalink.replace("https://www.reddit.com", "https://reddit.com")
     return f"https://reddit.com{permalink}"
+
+
+def matches_flair(flair: str, filter_text: str) -> bool:
+    return filter_text.lower() in flair.lower()
 
 
 def _map_apify_item(item: dict, subreddit: str) -> RedditPost | None:
@@ -35,6 +40,7 @@ def _map_apify_item(item: dict, subreddit: str) -> RedditPost | None:
             author=item.get("author", ""),
             subreddit=item.get("subreddit") or subreddit,
             url=url,
+            flair=item.get("flair", "") or "",
         )
 
     # trudax/reddit-scraper-lite output (legacy)
@@ -50,6 +56,7 @@ def _map_apify_item(item: dict, subreddit: str) -> RedditPost | None:
             author=item.get("username", ""),
             subreddit=item.get("parsedCommunityName") or subreddit,
             url=url,
+            flair=item.get("flair", "") or "",
         )
 
     return None
@@ -65,7 +72,7 @@ class RedditClient:
                 "Get one at https://console.apify.com/account/integrations"
             )
 
-    def _build_run_input(self, subreddit: str, limit: int) -> dict:
+    def _build_run_input(self, subreddit: str, limit: int, flair_filter: str) -> dict:
         proxy = {
             "useApifyProxy": True,
             "apifyProxyGroups": ["RESIDENTIAL"],
@@ -93,17 +100,25 @@ class RedditClient:
             }
 
         return {
-            "mode": "subreddit_posts",
-            "subreddits": [subreddit],
-            "sort": "new",
+            "mode": "search",
+            "searchQuery": f'flair:"{flair_filter}"',
+            "searchSubreddit": subreddit,
+            "searchSort": "new",
             "maxResults": limit,
             "includeComments": False,
             "proxyConfiguration": proxy,
         }
 
-    def fetch_posts(self, subreddit: str = "UGCCreators", limit: int = 25) -> list[RedditPost]:
+    def fetch_posts(
+        self,
+        subreddit: str = "UGCCreators",
+        limit: int = 25,
+        flair_filter: str = DEFAULT_FLAIR_FILTER,
+    ) -> list[RedditPost]:
         client = ApifyClient(self._api_token)
-        run = client.actor(self._actor_id).call(run_input=self._build_run_input(subreddit, limit))
+        run = client.actor(self._actor_id).call(
+            run_input=self._build_run_input(subreddit, limit, flair_filter)
+        )
 
         status = run.get("status")
         if status and status != "SUCCEEDED":
@@ -117,17 +132,17 @@ class RedditClient:
         if not dataset_id:
             raise RuntimeError("Apify actor run did not return a dataset ID")
 
-        posts: list[RedditPost] = []
+        raw_posts: list[RedditPost] = []
         for item in client.dataset(dataset_id).iterate_items():
             post = _map_apify_item(item, subreddit)
             if post is not None:
-                posts.append(post)
+                raw_posts.append(post)
 
-        if not posts:
+        if not raw_posts:
             run_id = run.get("id", "unknown")
             raise RuntimeError(
                 "Apify actor returned no posts. Reddit may have blocked the scrape. "
                 f"Check run logs at https://console.apify.com/actors/runs/{run_id}"
             )
 
-        return posts
+        return [post for post in raw_posts if matches_flair(post.flair, flair_filter)]

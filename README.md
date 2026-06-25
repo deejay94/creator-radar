@@ -27,6 +27,8 @@ Fill in `.env`:
 
 Reddit shut down unauthenticated `.json` access in 2026. CreatorRadar uses Apify's `labrat011/reddit-scraper`, which parses `old.reddit.com` with TLS impersonation instead of the Puppeteer-based actor that often gets 403-blocked.
 
+By default, only posts with a flair containing **Collab Request 🤝** are scanned. Override with `--flair`.
+
 ## Run
 
 ```bash
@@ -38,6 +40,7 @@ Options:
 ```bash
 python -m radar --limit 25
 python -m radar --subreddit UGCCreators
+python -m radar --flair "Collab Request 🤝"
 ```
 
 Each run starts an Apify actor job and typically takes 15–60 seconds.
@@ -61,7 +64,7 @@ Contact: DM — u/brandname
 Ends with a summary:
 
 ```
-Scanned 25 posts · 4 opportunities (2 A, 1 B, 1 C)
+Scanned 5 "Collab Request 🤝" posts · 4 opportunities (2 A, 1 B, 1 C)
 ```
 
 Every opportunity includes a clickable `https://reddit.com/...` link.

@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from radar.classify import classify_post
 from radar.output import print_opportunity, print_summary
-from radar.reddit import RedditClient, RedditConfigError
+from radar.reddit import DEFAULT_FLAIR_FILTER, RedditClient, RedditConfigError
 
 
 def main() -> int:
@@ -18,11 +18,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Scan r/UGCCreators for creator opportunities")
     parser.add_argument("--limit", type=int, default=25, help="Number of posts to fetch (default: 25)")
     parser.add_argument("--subreddit", default="UGCCreators", help="Subreddit to scan (default: UGCCreators)")
+    parser.add_argument(
+        "--flair",
+        default=DEFAULT_FLAIR_FILTER,
+        help=f'Only include posts whose flair contains this text (default: "{DEFAULT_FLAIR_FILTER}")',
+    )
     args = parser.parse_args()
 
     try:
         client = RedditClient()
-        posts = client.fetch_posts(subreddit=args.subreddit, limit=args.limit)
+        posts = client.fetch_posts(
+            subreddit=args.subreddit,
+            limit=args.limit,
+            flair_filter=args.flair,
+        )
     except RedditConfigError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -36,7 +45,7 @@ def main() -> int:
         return 1
 
     if not posts:
-        print("No posts found.")
+        print(f'No posts found with flair matching "{args.flair}".')
         return 0
 
     results = []
@@ -49,7 +58,7 @@ def main() -> int:
         except Exception as exc:
             print(f"Skipped post (classification error): {post.title[:60]} — {exc}", file=sys.stderr)
 
-    print_summary(len(posts), results)
+    print_summary(len(posts), results, flair_filter=args.flair)
     return 0
 
 

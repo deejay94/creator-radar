@@ -27,12 +27,13 @@ def print_opportunity(result: ClassificationResult) -> None:
     print()
 
 
-def print_summary(scanned: int, results: list[ClassificationResult]) -> None:
+def print_summary(scanned: int, results: list[ClassificationResult], flair_filter: str = "") -> None:
     actionable = [r for r in results if r.is_actionable()]
     counts = {"A": 0, "B": 0, "C": 0}
     for r in actionable:
         counts[r.opportunityTier] += 1
+    label = f'"{flair_filter}" posts' if flair_filter else "posts"
     print(
-        f"Scanned {scanned} posts · {len(actionable)} opportunities "
+        f"Scanned {scanned} {label} · {len(actionable)} opportunities "
         f"({counts['A']} A, {counts['B']} B, {counts['C']} C)"
     )

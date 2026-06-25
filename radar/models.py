@@ -14,6 +14,7 @@ class RedditPost(BaseModel):
     author: str
     subreddit: str
     url: str
+    flair: str = ""
 
 
 class ClassificationResult(BaseModel):
