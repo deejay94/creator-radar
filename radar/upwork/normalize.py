@@ -15,13 +15,8 @@ def normalize_upwork_listing(raw: RawListing) -> Opportunity:
 
     posted_time = str(payload.get("posted_time") or "")
     metadata = {
-        "hourly": payload.get("hourly"),
         "experience_level": payload.get("experience_level") or "",
-        "client_rating": payload.get("client_rating") or "",
-        "client_spend": payload.get("client_spend") or "",
         "client_country": payload.get("client_country") or "",
-        "payment_verified": payload.get("payment_verified"),
-        "proposal_count": payload.get("proposal_count") or "",
         "posted_time": posted_time,
         "project_length": payload.get("project_length") or "",
         "category": payload.get("category") or "",
@@ -37,7 +32,12 @@ def normalize_upwork_listing(raw: RawListing) -> Opportunity:
         description=raw.description,
         url=raw.url,
         budget=str(payload.get("budget") or ""),
+        hourly=payload.get("hourly"),
         posted_at=parse_posted_at(posted_time),
         skills=[str(skill) for skill in skills if skill],
+        client_rating=str(payload.get("client_rating") or ""),
+        client_spend=str(payload.get("client_spend") or ""),
+        payment_verified=payload.get("payment_verified"),
+        proposal_count=str(payload.get("proposal_count") or ""),
         metadata=metadata,
     )

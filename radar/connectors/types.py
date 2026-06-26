@@ -44,6 +44,15 @@ class Opportunity(BaseModel):
     description: str = ""
     url: str
     budget: str = ""
-    posted_at: Optional[datetime] = None
+    hourly: Optional[bool] = None
     skills: list[str] = Field(default_factory=list)
+    posted_at: Optional[datetime] = None
+    client_rating: str = ""
+    client_spend: str = ""
+    payment_verified: Optional[bool] = None
+    proposal_count: str = ""
+    ai_score: Optional[int] = None
+    priority: str = ""
+    reasoning: str = ""
+    status: str = "new"
     metadata: dict[str, Any] = Field(default_factory=dict)

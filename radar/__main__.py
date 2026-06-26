@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from radar.classify import classify_post
 from radar.filters import filter_posts_for_classification
+from radar.import_cmd import main as import_main
 from radar.output import print_opportunity, print_summary
 from radar.reddit import DEFAULT_FLAIR_FILTER, RedditClient, RedditConfigError
 from radar.upwork.cli import main as upwork_main
@@ -80,8 +81,14 @@ def main() -> int:
     load_dotenv()
 
     argv = sys.argv[1:]
-    if argv and argv[0] == "upwork":
+    if not argv:
+        return run_reddit(argv)
+
+    command = argv[0]
+    if command == "upwork":
         return upwork_main(argv[1:])
+    if command == "import":
+        return import_main(argv[1:])
 
     return run_reddit(argv)
 

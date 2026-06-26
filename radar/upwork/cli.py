@@ -9,6 +9,7 @@ import sys
 from radar.connectors.errors import ConnectorUnhealthyError
 from radar.connectors.pipeline import run_connector_pipeline
 from radar.connectors.types import ConnectorHealth, SearchParams
+from radar.opportunity_filters import get_male_only_creator_filter_reason
 from radar.upwork.auth import import_session, login, login_instructions
 from radar.upwork.browser import BrowserChannel
 from radar.upwork.config import DEFAULT_SEARCH_QUERIES
@@ -106,6 +107,13 @@ def cmd_search(query: str | None, limit: int, headed: bool, debug: bool) -> int:
                 file=sys.stderr,
             ),
         ):
+            filter_reason = get_male_only_creator_filter_reason(opportunity)
+            if filter_reason:
+                print(
+                    f"Filtered ({filter_reason}): {opportunity.title[:80]}",
+                    file=sys.stderr,
+                )
+                continue
             print(opportunity.model_dump_json())
     except ConnectorUnhealthyError as exc:
         print(str(exc), file=sys.stderr)

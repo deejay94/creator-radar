@@ -27,8 +27,8 @@ def test_normalize_does_not_require_browser():
     assert opportunity.platform == "upwork"
     assert opportunity.external_id == "abc123"
     assert opportunity.budget == "$500.00"
+    assert opportunity.hourly is False
     assert opportunity.skills == ["Video Editing", "TikTok"]
-    assert opportunity.metadata["hourly"] is False
     assert opportunity.metadata["search_query"] == "UGC"
     assert opportunity.posted_at is not None
 

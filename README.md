@@ -1,12 +1,12 @@
 # CreatorRadar V1 — CLI Reddit Opportunity Radar
 
-A minimal CLI prototype that fetches posts from **r/UGCCreators** via [Apify's Reddit Scraper](https://apify.com/labrat011/reddit-scraper), classifies them with GPT-4o-mini, and prints actionable creator opportunities to your terminal.
+A minimal CLI prototype that fetches opportunities from **Reddit** and **Upwork**, classifies Reddit posts with GPT-4o-mini, and stores normalized opportunities in SQLite.
 
 ```
-Apify Reddit Scraper → AI classification → console output
+Connectors → normalize → SQLite   |   Reddit → AI classification → console
 ```
 
-No database, no Notion, no Slack, no web server.
+No Notion, no Slack, no web server.
 
 ## Setup
 
@@ -118,6 +118,19 @@ Logs (queries run, jobs found, extraction errors) go to stderr. JSON output goes
 ```bash
 python -m radar upwork search --query UGC --limit 5 > opportunities.jsonl
 ```
+
+### Import to SQLite
+
+Persist opportunities (with deduplication) to `~/.creator-radar/opportunities.db`:
+
+```bash
+python -m radar import --platform upwork --query UGC --limit 5
+python -m radar import --platform reddit --limit 10
+```
+
+Re-running import skips duplicates by `platform + external_id` or matching URL.
+
+Override database path with `RADAR_DB_PATH` in `.env`.
 
 ## Output
 

@@ -12,8 +12,9 @@ from radar.connectors import (
 from radar.upwork.connector import UpworkConnector
 
 
-def test_registry_contains_upwork():
+def test_registry_contains_upwork_and_reddit():
     assert "upwork" in list_platforms()
+    assert "reddit" in list_platforms()
 
 
 def test_get_connector_returns_upwork_instance():
