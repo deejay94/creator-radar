@@ -7,3 +7,11 @@ class UpworkAuthError(RuntimeError):
 
 class PlaywrightNotInstalledError(UpworkAuthError):
     """Raised when Playwright browsers are missing."""
+
+
+class ExtractionError(UpworkAuthError):
+    """Raised when a single job listing cannot be extracted."""
+
+    def __init__(self, message: str, *, url: str = "") -> None:
+        super().__init__(message)
+        self.url = url

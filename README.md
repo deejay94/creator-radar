@@ -99,7 +99,25 @@ Status: reauthentication required
 Run: python -m radar upwork login
 ```
 
-Job search and import are not implemented yet (Step 2).
+### Upwork job search
+
+Search Upwork with your saved session. Prints one normalized `Opportunity` JSON object per line.
+
+```bash
+python -m radar upwork search --query UGC --limit 10
+python -m radar upwork search --limit 5          # runs all default PRD queries
+python -m radar upwork search --query UGC --debug  # saves screenshot if 0 jobs
+```
+
+Search uses **visible Chrome by default** (same as login). Use `--headless` only if you know it works for your account.
+
+Default search terms (when `--query` is omitted): UGC, User Generated Content, TikTok Creator, TikTok Content, Instagram Creator, Content Creator, Product Video, Product Review, Video Testimonial, Social Media Content.
+
+Logs (queries run, jobs found, extraction errors) go to stderr. JSON output goes to stdout — pipe to a file if needed:
+
+```bash
+python -m radar upwork search --query UGC --limit 5 > opportunities.jsonl
+```
 
 ## Output
 

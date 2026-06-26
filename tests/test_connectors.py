@@ -2,7 +2,6 @@ import pytest
 
 from radar.connectors import (
     ConnectorError,
-    ConnectorNotReadyError,
     OpportunityConnector,
     RawListing,
     RawListingRef,
@@ -33,18 +32,15 @@ def test_opportunity_connector_is_abstract():
         OpportunityConnector()  # type: ignore[abstract]
 
 
-def test_upwork_unimplemented_methods_raise_not_ready():
-    connector = UpworkConnector()
-    params = SearchParams(queries=["UGC"])
-    ref = RawListingRef(external_id="1", url="https://www.upwork.com/jobs/1", title="Test")
-
-    with pytest.raises(ConnectorNotReadyError, match="Step 2"):
-        connector.search(params)
-
-    with pytest.raises(ConnectorNotReadyError, match="Step 2"):
-        connector.extract(ref)
-
-    with pytest.raises(ConnectorNotReadyError, match="Step 2"):
-        connector.normalize(
-            RawListing(platform="upwork", external_id="1", url="https://www.upwork.com/jobs/1")
-        )
+def test_upwork_normalize_is_pure():
+    raw = RawListing(
+        platform="upwork",
+        external_id="1",
+        url="https://www.upwork.com/jobs/~1",
+        title="Test",
+        description="Body",
+        payload={"skills": [], "budget": "$50.00"},
+    )
+    opportunity = UpworkConnector().normalize(raw)
+    assert opportunity.platform == "upwork"
+    assert opportunity.budget == "$50.00"

@@ -25,6 +25,7 @@ class RawListingRef(BaseModel):
     external_id: str
     url: str
     title: str = ""
+    source_query: str = ""
 
 
 class RawListing(BaseModel):

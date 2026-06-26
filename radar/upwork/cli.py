@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 
-from radar.connectors.types import ConnectorHealth
+from radar.connectors.errors import ConnectorUnhealthyError
+from radar.connectors.pipeline import run_connector_pipeline
+from radar.connectors.types import ConnectorHealth, SearchParams
 from radar.upwork.auth import import_session, login, login_instructions
 from radar.upwork.browser import BrowserChannel
+from radar.upwork.config import DEFAULT_SEARCH_QUERIES
 from radar.upwork.connector import UpworkConnector
 from radar.upwork.errors import PlaywrightNotInstalledError, UpworkAuthError
 
@@ -74,6 +78,51 @@ def cmd_status() -> int:
     return 0 if health.healthy else 1
 
 
+def _configure_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(message)s",
+        stream=sys.stderr,
+    )
+
+
+def cmd_search(query: str | None, limit: int, headed: bool, debug: bool) -> int:
+    _configure_logging()
+
+    queries = [query] if query else DEFAULT_SEARCH_QUERIES
+    connector = UpworkConnector(headed=headed)
+    params = SearchParams(
+        queries=queries,
+        limit_per_query=limit,
+        extras={"debug": debug},
+    )
+
+    try:
+        for opportunity in run_connector_pipeline(
+            connector,
+            params,
+            on_extraction_error=lambda ref, exc: print(
+                f"Extraction error ({ref.external_id}): {exc}",
+                file=sys.stderr,
+            ),
+        ):
+            print(opportunity.model_dump_json())
+    except ConnectorUnhealthyError as exc:
+        print(str(exc), file=sys.stderr)
+        print("Run: python -m radar upwork login", file=sys.stderr)
+        return 1
+    except PlaywrightNotInstalledError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except UpworkAuthError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    finally:
+        connector.close()
+
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Upwork connector commands")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -94,6 +143,31 @@ def main(argv: list[str] | None = None) -> int:
 
     subparsers.add_parser("status", help="Check whether the saved Upwork session is valid")
 
+    search_parser = subparsers.add_parser(
+        "search",
+        help="Search Upwork jobs and print normalized opportunities as JSON lines",
+    )
+    search_parser.add_argument(
+        "--query",
+        help="Single search term (default: run all PRD default queries)",
+    )
+    search_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum jobs per query (default: 20)",
+    )
+    search_parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Use headless browser (often returns 0 jobs on Upwork; default is visible Chrome)",
+    )
+    search_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Save screenshot/HTML to ~/.creator-radar/ when search returns 0 jobs",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "login":
         return cmd_login(browser=args.browser)
@@ -101,5 +175,12 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_import_session(args.path)
     if args.command == "status":
         return cmd_status()
+    if args.command == "search":
+        return cmd_search(
+            query=args.query,
+            limit=args.limit,
+            headed=not args.headless,
+            debug=args.debug,
+        )
     parser.print_help()
     return 1
