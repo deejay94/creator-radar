@@ -24,10 +24,21 @@ Fill in `.env`:
 | `OPENAI_API_KEY` | Yes | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | `APIFY_API_TOKEN` | Yes | [console.apify.com/account/integrations](https://console.apify.com/account/integrations) |
 | `APIFY_ACTOR_ID` | No | Defaults to `labrat011/reddit-scraper` (HTTP + old.reddit.com; avoids Puppeteer 403s) |
+| `UPWORK_SESSION_PATH` | No | Defaults to `~/.creator-radar/upwork-session.json` |
 
 Reddit shut down unauthenticated `.json` access in 2026. CreatorRadar uses Apify's `labrat011/reddit-scraper`, which parses `old.reddit.com` with TLS impersonation instead of the Puppeteer-based actor that often gets 403-blocked.
 
 By default, only posts with a flair containing **Collab Request 🤝** are scanned. Override with `--flair`.
+
+For Upwork, install Playwright's Chromium browser after `pip install`:
+
+```bash
+playwright install chromium
+```
+
+## Connector architecture
+
+Platform sources implement a shared `OpportunityConnector` interface (`health_check`, `search`, `extract`, `normalize`) under `radar/connectors/`. The Upwork connector is the first implementation; Reddit and other platforms will plug into the same contract later.
 
 ## Run
 
@@ -44,6 +55,51 @@ python -m radar --flair "Collab Request 🤝"
 ```
 
 Each run starts an Apify actor job and typically takes 15–60 seconds.
+
+### Upwork session auth
+
+Log in once via a **real Chrome window** (default). Upwork often blocks Playwright's bundled Chromium with a CAPTCHA loop — Chrome + a persistent profile avoids that in most cases.
+
+```bash
+playwright install chromium   # still needed for headless status checks
+python -m radar upwork login  # uses Google Chrome by default
+python -m radar upwork status
+```
+
+Options:
+
+```bash
+python -m radar upwork login --browser chrome     # recommended (default)
+python -m radar upwork login --browser chromium   # fallback if Chrome is not installed
+python -m radar upwork import-session /path/to/storage_state.json
+```
+
+**If CAPTCHA keeps saying "verify you're human":**
+
+1. Make sure [Google Chrome](https://www.google.com/chrome/) is installed, then run `python -m radar upwork login` (defaults to Chrome).
+2. Turn off VPN/proxy and retry on a normal home network.
+3. Complete login slowly in the opened window — don't switch away during CAPTCHA.
+4. If it still loops, log in manually in your normal browser, export a Playwright `storage_state` JSON, then run `python -m radar upwork import-session <file>`.
+
+The login browser keeps a persistent profile at `~/.creator-radar/upwork-browser-profile`. The saved session for headless checks is at `~/.creator-radar/upwork-session.json`.
+
+When authenticated, `status` prints:
+
+```
+✔ Upwork session valid
+User: Dee Jay
+Status: authenticated
+```
+
+If the session is missing or expired:
+
+```
+✗ Upwork session invalid
+Status: reauthentication required
+Run: python -m radar upwork login
+```
+
+Job search and import are not implemented yet (Step 2).
 
 ## Output
 

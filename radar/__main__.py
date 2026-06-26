@@ -11,11 +11,10 @@ from radar.classify import classify_post
 from radar.filters import filter_posts_for_classification
 from radar.output import print_opportunity, print_summary
 from radar.reddit import DEFAULT_FLAIR_FILTER, RedditClient, RedditConfigError
+from radar.upwork.cli import main as upwork_main
 
 
-def main() -> int:
-    load_dotenv()
-
+def run_reddit(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Scan r/UGCCreators for creator opportunities")
     parser.add_argument("--limit", type=int, default=25, help="Number of posts to fetch (default: 25)")
     parser.add_argument("--subreddit", default="UGCCreators", help="Subreddit to scan (default: UGCCreators)")
@@ -24,7 +23,7 @@ def main() -> int:
         default=DEFAULT_FLAIR_FILTER,
         help=f'Only include posts whose flair contains this text (default: "{DEFAULT_FLAIR_FILTER}")',
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     try:
         client = RedditClient()
@@ -75,6 +74,16 @@ def main() -> int:
         filtered_out=len(skipped),
     )
     return 0
+
+
+def main() -> int:
+    load_dotenv()
+
+    argv = sys.argv[1:]
+    if argv and argv[0] == "upwork":
+        return upwork_main(argv[1:])
+
+    return run_reddit(argv)
 
 
 if __name__ == "__main__":
