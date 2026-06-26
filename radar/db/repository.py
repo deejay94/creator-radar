@@ -62,6 +62,22 @@ class OpportunityRepository:
         ).fetchone()
         return row is not None
 
+    def get_by_url(self, url: str) -> Opportunity | None:
+        row = self._conn.execute(
+            "SELECT * FROM opportunities WHERE url = ? LIMIT 1",
+            (url,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_opportunity(row)
+
+    def iter_by_platform(self, platform: str) -> list[Opportunity]:
+        rows = self._conn.execute(
+            "SELECT * FROM opportunities WHERE platform = ? ORDER BY id DESC",
+            (platform,),
+        ).fetchall()
+        return [self._row_to_opportunity(row) for row in rows]
+
     def insert(self, opportunity: Opportunity) -> int:
         now = _utc_now_iso()
         posted_at = opportunity.posted_at.isoformat() if opportunity.posted_at else None

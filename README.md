@@ -128,7 +128,14 @@ python -m radar import --platform upwork --query UGC --limit 5
 python -m radar import --platform reddit --limit 10
 ```
 
-Re-running import skips duplicates by `platform + external_id` or matching URL.
+Re-running import skips duplicates by:
+
+1. `platform + external_id` (primary key)
+2. Exact URL match
+3. Similar title (≥92% match, same platform)
+4. Similar description (≥88% match when both are substantial)
+
+Duplicates within the same import run are caught before hitting the database.
 
 Override database path with `RADAR_DB_PATH` in `.env`.
 

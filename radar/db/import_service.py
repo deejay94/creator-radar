@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from radar.connectors.base import OpportunityConnector
 from radar.connectors.pipeline import run_connector_pipeline
 from radar.connectors.types import Opportunity, RawListingRef, SearchParams
-from radar.db.dedup import check_duplicate
+from radar.db.dedup import DedupSession, check_duplicate
 from radar.db.repository import OpportunityRepository
 from radar.opportunity_filters import get_male_only_creator_filter_reason
 
@@ -30,6 +30,7 @@ def import_opportunities(
     repo: OpportunityRepository,
 ) -> ImportStats:
     stats = ImportStats()
+    dedup_session = DedupSession(repo=repo)
 
     def on_extraction_error(ref: RawListingRef, exc: Exception) -> None:
         stats.extraction_errors += 1
@@ -58,18 +59,21 @@ def import_opportunities(
             )
             continue
 
-        dedup = check_duplicate(opportunity, repo)
+        dedup = check_duplicate(opportunity, dedup_session)
         if dedup.is_duplicate:
             stats.duplicates += 1
+            matched = f" (matches {dedup.matched_external_id})" if dedup.matched_external_id else ""
             logger.info(
-                "Duplicate skipped (%s): %s — %s",
+                "Duplicate skipped (%s)%s: %s — %s",
                 dedup.reason,
+                matched,
                 opportunity.external_id,
                 opportunity.title[:80],
             )
             continue
 
         row_id = repo.insert(opportunity)
+        dedup_session.record(opportunity)
         stats.imported += 1
         logger.info(
             "Imported %s opportunity id=%d external_id=%s title=%s",
