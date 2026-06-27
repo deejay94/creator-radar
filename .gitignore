@@ -3,7 +3,9 @@ __pycache__/
 .env
 .venv/
 venv/
+node_modules/
 .pytest_cache/
 .DS_Store
 .creator-radar/
+seen_opportunities.json
 upwork-session.json

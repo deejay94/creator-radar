@@ -12,15 +12,25 @@ _HIRER_PATTERNS = (
     re.compile(r"looking for (ugc )?creators?", re.I),
     re.compile(r"seeking (ugc )?creators?", re.I),
     re.compile(r"need (ugc )?creators?", re.I),
-    re.compile(r"\bhiring\b", re.I),
+    re.compile(r"\b(?:we(?:'re| are) )?hiring (ugc )?creators?", re.I),
+    re.compile(r"^\[hiring\]", re.I),
+    re.compile(r"\bhiring:\s", re.I),
     re.compile(r"\bpaid\b", re.I),
     re.compile(r"paying creators?", re.I),
     re.compile(r"dm (me )?for (a )?collab", re.I),
 )
 
+_JOB_SEEKER_ASKING_HIRING = (
+    re.compile(r"\banyone hiring\b", re.I),
+    re.compile(r"\bwho(?:'s| is) hiring\b", re.I),
+)
+
 _JOB_SEEKER_PATTERNS = (
     re.compile(r"\bhire me\b", re.I),
     re.compile(r"looking for (work|gigs?|jobs?|opportunities)\b", re.I),
+    re.compile(r"looking for (a )?(ugc |content creator )?(jobs?|gigs?|work)\b", re.I),
+    re.compile(r"seeking (a )?(ugc |content creator )?(jobs?|gigs?|work)\b", re.I),
+    re.compile(r"searching for (a )?(ugc |content creator )?(jobs?|gigs?|work)\b", re.I),
     re.compile(r"looking for brands? to work with", re.I),
     re.compile(r"where (are|can i find) (the )?gigs?", re.I),
     re.compile(r"trying to (break into|get into|start in) (ugc|content creation)", re.I),
@@ -30,6 +40,9 @@ _JOB_SEEKER_PATTERNS = (
     re.compile(r"rate my (portfolio|profile|page)", re.I),
     re.compile(r"roast my", re.I),
     re.compile(r"feedback on my (portfolio|profile|videos?)", re.I),
+    re.compile(r"\bopen to work\b", re.I),
+    re.compile(r"\bopen for work\b", re.I),
+    re.compile(r"\bneed (a )?(ugc )?(job|gig)\b", re.I),
 )
 
 _MEME_DISCUSSION_FLAIR = re.compile(r"\b(meme|discussion|rant|shitpost|off[- ]topic|humou?r)\b", re.I)
@@ -72,6 +85,8 @@ def _matches_any(text: str, patterns: tuple[re.Pattern[str], ...]) -> bool:
 
 def _is_job_seeker_post(post: RedditPost) -> bool:
     text = _post_text(post)
+    if _matches_any(text, _JOB_SEEKER_ASKING_HIRING):
+        return True
     if _matches_any(text, _HIRER_PATTERNS):
         return False
     return _matches_any(text, _JOB_SEEKER_PATTERNS)

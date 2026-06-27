@@ -15,3 +15,7 @@ class ExtractionError(UpworkAuthError):
     def __init__(self, message: str, *, url: str = "") -> None:
         super().__init__(message)
         self.url = url
+
+
+class NormalizationError(UpworkAuthError):
+    """Raised when a raw listing cannot be mapped to an Opportunity."""

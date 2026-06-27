@@ -35,9 +35,21 @@ def test_filters_job_seeker_posts():
     post = _post("New UGC creator looking for work")
     assert get_skip_reason(post) == "job seeker post"
 
+    post = _post("Looking for UGC jobs")
+    assert get_skip_reason(post) == "job seeker post"
+
+    post = _post("Looking for a content creator job")
+    assert get_skip_reason(post) == "job seeker post"
+
+    post = _post("Anyone hiring UGC creators?")
+    assert get_skip_reason(post) == "job seeker post"
+
 
 def test_does_not_filter_hirer_looking_for_creators():
     post = _post("Looking for creators for paid skincare campaign")
+    assert get_skip_reason(post) is None
+
+    post = _post("[HIRING] Looking for UGC creators — $150 per video")
     assert get_skip_reason(post) is None
 
 

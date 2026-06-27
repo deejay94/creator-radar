@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from radar.connectors.base import OpportunityConnector
 from radar.connectors.types import (
     ConnectorHealth,
@@ -10,8 +12,11 @@ from radar.connectors.types import (
     RawListingRef,
     SearchParams,
 )
+from radar.filters import get_skip_reason
 from radar.models import RedditPost
 from radar.reddit import DEFAULT_FLAIR_FILTER, RedditClient, RedditConfigError
+
+logger = logging.getLogger(__name__)
 
 
 class RedditConnector(OpportunityConnector):
@@ -49,7 +54,8 @@ class RedditConnector(OpportunityConnector):
         )
 
     def search(self, params: SearchParams) -> list[RawListingRef]:
-        subreddit = str(params.extras.get("subreddit", "UGCCreators"))
+        subreddit_arg = params.extras.get("subreddit")
+        subreddit = str(subreddit_arg) if subreddit_arg else None
         flair_filter = str(params.extras.get("flair", DEFAULT_FLAIR_FILTER))
         limit = params.limit_per_query
 
@@ -58,6 +64,19 @@ class RedditConnector(OpportunityConnector):
             limit=limit,
             flair_filter=flair_filter,
         )
+        eligible_posts: list[RedditPost] = []
+        for post in posts:
+            skip_reason = get_skip_reason(post)
+            if skip_reason:
+                logger.info(
+                    "Filtered Reddit post (%s): %s — %s",
+                    skip_reason,
+                    post.post_id,
+                    post.title[:80],
+                )
+                continue
+            eligible_posts.append(post)
+        posts = eligible_posts
         self._cache = {post.post_id: post for post in posts}
         return [
             RawListingRef(

@@ -14,7 +14,7 @@ from radar.connectors.types import (
 )
 from radar.upwork.auth import check_status
 from radar.upwork.browser_session import UpworkBrowserSession
-from radar.upwork.config import DEFAULT_SEARCH_QUERIES
+from radar.upwork.config import resolve_search_queries
 from radar.upwork.errors import UpworkAuthError
 from radar.upwork.normalize import normalize_upwork_listing
 from radar.upwork.scraper import extract_job, search_jobs
@@ -69,10 +69,11 @@ class UpworkConnector(OpportunityConnector):
         )
 
     def search(self, params: SearchParams) -> list[RawListingRef]:
-        queries = params.queries or DEFAULT_SEARCH_QUERIES
+        queries = params.queries or resolve_search_queries()
         debug = bool(params.extras.get("debug"))
         all_refs: list[RawListingRef] = []
         seen_ids: set[str] = set()
+        total_found = 0
 
         for query in queries:
             refs = search_jobs(
@@ -81,6 +82,7 @@ class UpworkConnector(OpportunityConnector):
                 params.limit_per_query,
                 debug=debug,
             )
+            total_found += len(refs)
             logger.info("Search query %r: %d jobs found", query, len(refs))
             for ref in refs:
                 if ref.external_id in seen_ids:
@@ -88,7 +90,12 @@ class UpworkConnector(OpportunityConnector):
                 seen_ids.add(ref.external_id)
                 all_refs.append(ref)
 
-        logger.info("Total unique jobs across queries: %d", len(all_refs))
+        logger.info(
+            "Search summary: queries=%d, total_found=%d, unique=%d",
+            len(queries),
+            total_found,
+            len(all_refs),
+        )
         return all_refs
 
     def extract(self, ref: RawListingRef) -> RawListing:

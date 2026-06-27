@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
@@ -10,6 +12,46 @@ from radar.models import RedditPost
 
 DEFAULT_ACTOR_ID = "labrat011/reddit-scraper"
 DEFAULT_FLAIR_FILTER = "Collab Request 🤝"
+DEFAULT_SUBREDDITS = ["UGCCreators", "ugc"]
+DEFAULT_SUBREDDITS_CSV = ",".join(DEFAULT_SUBREDDITS)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SubredditScrapeConfig:
+    """How to fetch posts for a given subreddit."""
+
+    use_flair_search: bool = True
+    apply_flair_filter: bool = True
+
+
+# r/UGCCreators tags collab posts with a specific flair; r/ugc does not.
+SUBREDDIT_SCRAPE_CONFIG: dict[str, SubredditScrapeConfig] = {
+    "ugccreators": SubredditScrapeConfig(use_flair_search=True, apply_flair_filter=True),
+    "ugc": SubredditScrapeConfig(use_flair_search=False, apply_flair_filter=False),
+}
+
+
+def get_subreddit_scrape_config(subreddit: str) -> SubredditScrapeConfig:
+    known = SUBREDDIT_SCRAPE_CONFIG.get(subreddit.lower())
+    if known is not None:
+        return known
+    return SubredditScrapeConfig(use_flair_search=False, apply_flair_filter=True)
+
+
+def resolve_subreddits(subreddit: str | None = None) -> list[str]:
+    """Resolve subreddits to scrape. CLI value may be comma-separated; default is both defaults."""
+    if subreddit and subreddit.strip():
+        return [name.strip().removeprefix("r/") for name in subreddit.split(",") if name.strip()]
+    return list(DEFAULT_SUBREDDITS)
+
+
+def resolve_subreddits_from_env() -> list[str]:
+    env_value = os.environ.get("RADAR_REDDIT_SUBREDDITS", "").strip()
+    if env_value:
+        return resolve_subreddits(env_value)
+    return list(DEFAULT_SUBREDDITS)
 
 
 class RedditConfigError(ValueError):
@@ -86,7 +128,13 @@ class RedditClient:
                 "Get one at https://console.apify.com/account/integrations"
             )
 
-    def _build_run_input(self, subreddit: str, limit: int, flair_filter: str) -> dict:
+    def _build_run_input(
+        self,
+        subreddit: str,
+        limit: int,
+        flair_filter: str,
+        config: SubredditScrapeConfig,
+    ) -> dict:
         proxy = {
             "useApifyProxy": True,
             "apifyProxyGroups": ["RESIDENTIAL"],
@@ -113,11 +161,21 @@ class RedditClient:
                 "proxy": proxy,
             }
 
+        if config.use_flair_search:
+            return {
+                "mode": "search",
+                "searchQuery": f'flair:"{flair_filter}"',
+                "searchSubreddit": subreddit,
+                "searchSort": "new",
+                "maxResults": limit,
+                "includeComments": False,
+                "proxyConfiguration": proxy,
+            }
+
         return {
-            "mode": "search",
-            "searchQuery": f'flair:"{flair_filter}"',
-            "searchSubreddit": subreddit,
-            "searchSort": "new",
+            "mode": "subreddit_posts",
+            "subreddits": [subreddit],
+            "sort": "new",
             "maxResults": limit,
             "includeComments": False,
             "proxyConfiguration": proxy,
@@ -125,20 +183,48 @@ class RedditClient:
 
     def fetch_posts(
         self,
-        subreddit: str = "UGCCreators",
+        subreddit: str | None = None,
         limit: int = 25,
         flair_filter: str = DEFAULT_FLAIR_FILTER,
     ) -> list[RedditPost]:
+        subreddits = resolve_subreddits(subreddit)
+        combined: list[RedditPost] = []
+        seen_ids: set[str] = set()
+
+        for name in subreddits:
+            try:
+                posts = self._fetch_posts_single(name, limit, flair_filter)
+            except RuntimeError as exc:
+                logger.warning("Skipping r/%s after scrape failure: %s", name, exc)
+                if len(subreddits) == 1:
+                    raise
+                continue
+            logger.info("Fetched %d posts from r/%s", len(posts), name)
+            for post in posts:
+                if post.post_id in seen_ids:
+                    continue
+                seen_ids.add(post.post_id)
+                combined.append(post)
+
+        return combined
+
+    def _fetch_posts_single(
+        self,
+        subreddit: str,
+        limit: int,
+        flair_filter: str,
+    ) -> list[RedditPost]:
+        config = get_subreddit_scrape_config(subreddit)
         client = ApifyClient(self._api_token)
         run = client.actor(self._actor_id).call(
-            run_input=self._build_run_input(subreddit, limit, flair_filter)
+            run_input=self._build_run_input(subreddit, limit, flair_filter, config)
         )
 
         status = run.get("status")
         if status and status != "SUCCEEDED":
             run_id = run.get("id", "unknown")
             raise RuntimeError(
-                f"Apify actor run failed with status {status}. "
+                f"Apify actor run failed with status {status} for r/{subreddit}. "
                 f"Check logs at https://console.apify.com/actors/runs/{run_id}"
             )
 
@@ -153,10 +239,9 @@ class RedditClient:
                 raw_posts.append(post)
 
         if not raw_posts:
-            run_id = run.get("id", "unknown")
-            raise RuntimeError(
-                "Apify actor returned no posts. Reddit may have blocked the scrape. "
-                f"Check run logs at https://console.apify.com/actors/runs/{run_id}"
-            )
+            logger.info("No posts returned for r/%s", subreddit)
+            return []
 
-        return [post for post in raw_posts if matches_flair(post.flair, flair_filter)]
+        if config.apply_flair_filter and flair_filter:
+            return [post for post in raw_posts if matches_flair(post.flair, flair_filter)]
+        return raw_posts

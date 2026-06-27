@@ -7,18 +7,28 @@ import sys
 
 from dotenv import load_dotenv
 
+from radar.ai_config import is_ai_classification_enabled
 from radar.classify import classify_post
 from radar.filters import filter_posts_for_classification
 from radar.import_cmd import main as import_main
-from radar.output import print_opportunity, print_summary
+from radar.list_cmd import main as list_main
+from radar.notify_cmd import main as notify_main
+from radar.output import print_opportunity, print_plain_summary, print_reddit_post, print_summary
 from radar.reddit import DEFAULT_FLAIR_FILTER, RedditClient, RedditConfigError
+from radar.score_cmd import main as score_main
 from radar.upwork.cli import main as upwork_main
 
 
 def run_reddit(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description="Scan r/UGCCreators for creator opportunities")
-    parser.add_argument("--limit", type=int, default=25, help="Number of posts to fetch (default: 25)")
-    parser.add_argument("--subreddit", default="UGCCreators", help="Subreddit to scan (default: UGCCreators)")
+    parser = argparse.ArgumentParser(
+        description="Scan Reddit subreddits for creator opportunities (default: UGCCreators, ugc)"
+    )
+    parser.add_argument("--limit", type=int, default=25, help="Number of posts to fetch per subreddit (default: 25)")
+    parser.add_argument(
+        "--subreddit",
+        default=None,
+        help="Subreddit(s) to scan, comma-separated (default: UGCCreators, ugc)",
+    )
     parser.add_argument(
         "--flair",
         default=DEFAULT_FLAIR_FILTER,
@@ -57,6 +67,17 @@ def run_reddit(argv: list[str]) -> int:
         print(f'No posts remained after feed filters ({len(skipped)} skipped).')
         return 0
 
+    if not is_ai_classification_enabled():
+        for post in eligible:
+            print_reddit_post(post)
+        print_plain_summary(
+            shown=len(eligible),
+            flair_filter=args.flair,
+            fetched=len(posts),
+            filtered_out=len(skipped),
+        )
+        return 0
+
     results = []
     for post in eligible:
         try:
@@ -89,6 +110,12 @@ def main() -> int:
         return upwork_main(argv[1:])
     if command == "import":
         return import_main(argv[1:])
+    if command == "score":
+        return score_main(argv[1:])
+    if command == "list":
+        return list_main(argv[1:])
+    if command == "notify":
+        return notify_main(argv[1:])
 
     return run_reddit(argv)
 

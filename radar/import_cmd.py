@@ -11,8 +11,8 @@ from radar.connectors.registry import get_connector
 from radar.connectors.types import SearchParams
 from radar.db.import_service import import_opportunities
 from radar.db.repository import OpportunityRepository
-from radar.reddit import DEFAULT_FLAIR_FILTER
-from radar.upwork.config import DEFAULT_SEARCH_QUERIES
+from radar.reddit import DEFAULT_FLAIR_FILTER, DEFAULT_SUBREDDITS
+from radar.upwork.config import resolve_limit_per_query, resolve_search_queries
 from radar.upwork.errors import PlaywrightNotInstalledError, UpworkAuthError
 
 
@@ -26,17 +26,16 @@ def _configure_logging() -> None:
 
 def _build_search_params(platform: str, args: argparse.Namespace) -> SearchParams:
     if platform == "upwork":
-        queries = [args.query] if args.query else DEFAULT_SEARCH_QUERIES
         return SearchParams(
-            queries=queries,
-            limit_per_query=args.limit,
+            queries=resolve_search_queries(args.query),
+            limit_per_query=resolve_limit_per_query(args.limit),
             extras={"debug": args.debug},
         )
 
     if platform == "reddit":
         return SearchParams(
             queries=[],
-            limit_per_query=args.limit,
+            limit_per_query=resolve_limit_per_query(args.limit),
             extras={
                 "subreddit": args.subreddit,
                 "flair": args.flair,
@@ -56,7 +55,12 @@ def cmd_import(argv: list[str] | None = None) -> int:
         choices=["upwork", "reddit"],
         help="Connector platform to import from",
     )
-    parser.add_argument("--limit", type=int, default=20, help="Max listings per query/fetch")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Max listings per query/fetch (default: RADAR_UPWORK_LIMIT_PER_QUERY or 20)",
+    )
     parser.add_argument("--query", help="Upwork search term (default: all PRD queries)")
     parser.add_argument(
         "--headless",
@@ -68,11 +72,20 @@ def cmd_import(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Upwork only: save debug artifacts when search returns 0 jobs",
     )
-    parser.add_argument("--subreddit", default="UGCCreators", help="Reddit only: subreddit")
+    parser.add_argument(
+        "--subreddit",
+        default=None,
+        help=f"Reddit only: subreddit(s), comma-separated (default: {', '.join(DEFAULT_SUBREDDITS)})",
+    )
     parser.add_argument(
         "--flair",
         default=DEFAULT_FLAIR_FILTER,
         help="Reddit only: flair filter",
+    )
+    parser.add_argument(
+        "--no-score",
+        action="store_true",
+        help="Skip AI scoring during import (AI is off by default; use when RADAR_AI_ENABLED=true)",
     )
     args = parser.parse_args(argv)
 
@@ -82,7 +95,12 @@ def cmd_import(argv: list[str] | None = None) -> int:
     params = _build_search_params(platform, args)
 
     try:
-        stats = import_opportunities(connector, params, repo)
+        stats = import_opportunities(
+            connector,
+            params,
+            repo,
+            score_enabled=False if args.no_score else None,
+        )
     except ConnectorUnhealthyError as exc:
         print(str(exc), file=sys.stderr)
         if platform == "upwork":
@@ -107,8 +125,10 @@ def cmd_import(argv: list[str] | None = None) -> int:
 
     print(
         f"Import complete ({platform}): "
-        f"{stats.imported} imported, {stats.duplicates} duplicates skipped, "
-        f"{stats.filtered} filtered, {stats.extraction_errors} extraction errors, "
+        f"{stats.imported} imported, {stats.scored} scored, "
+        f"{stats.duplicates} duplicates skipped, "
+        f"{stats.filtered} filtered, {stats.scoring_errors} scoring errors, "
+        f"{stats.extraction_errors} extraction errors, "
         f"{total} total in database"
     )
     print(f"Database: {db_path}")

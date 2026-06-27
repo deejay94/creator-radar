@@ -24,7 +24,7 @@ def test_build_search_url():
 
 
 def test_parse_listing_fields_from_features():
-    payload = parse_listing_fields(
+    extracted = parse_listing_fields(
         title="UGC Video Creator",
         description="Need short-form product videos.",
         skills=["Video Production", "TikTok"],
@@ -37,13 +37,13 @@ def test_parse_listing_fields_from_features():
         ],
         page_text="Posted 3 hours ago | United States | $10K+ spent | 4.9 of 5",
     )
-    assert payload["hourly"] is True
-    assert "$25.00" in payload["budget"]
-    assert payload["experience_level"] == "Intermediate"
-    assert payload["proposal_count"] == "5 to 10"
-    assert payload["payment_verified"] is True
-    assert payload["client_rating"] == "4.9"
-    assert "3 hours ago" in payload["posted_time"]
+    assert extracted.hourly is True
+    assert "$25.00" in extracted.budget
+    assert extracted.experience_level == "Intermediate"
+    assert extracted.proposal_count == "5 to 10"
+    assert extracted.payment_verified is True
+    assert extracted.client_rating == "4.9"
+    assert "3 hours ago" in extracted.posted_time
 
 
 def test_parse_posted_at_relative():

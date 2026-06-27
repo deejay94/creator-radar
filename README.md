@@ -1,12 +1,12 @@
 # CreatorRadar V1 — CLI Reddit Opportunity Radar
 
-A minimal CLI prototype that fetches opportunities from **Reddit** and **Upwork**, classifies Reddit posts with GPT-4o-mini, and stores normalized opportunities in SQLite.
+A minimal CLI prototype that fetches opportunities from **Reddit** and **Upwork**, and stores normalized opportunities in SQLite.
 
 ```
-Connectors → normalize → SQLite   |   Reddit → AI classification → console
+Connectors → normalize → SQLite   |   Reddit → feed filters → console
 ```
 
-No Notion, no Slack, no web server.
+No Notion, no Slack, no web server. **AI classification and scoring are disabled by default.**
 
 ## Setup
 
@@ -21,14 +21,15 @@ Fill in `.env`:
 
 | Variable | Required | Notes |
 |----------|----------|-------|
-| `OPENAI_API_KEY` | Yes | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | `APIFY_API_TOKEN` | Yes | [console.apify.com/account/integrations](https://console.apify.com/account/integrations) |
+| `OPENAI_API_KEY` | No | Only needed when `RADAR_AI_ENABLED=true` |
 | `APIFY_ACTOR_ID` | No | Defaults to `labrat011/reddit-scraper` (HTTP + old.reddit.com; avoids Puppeteer 403s) |
 | `UPWORK_SESSION_PATH` | No | Defaults to `~/.creator-radar/upwork-session.json` |
+| `RADAR_AI_ENABLED` | No | Master AI switch (default: off) |
 
 Reddit shut down unauthenticated `.json` access in 2026. CreatorRadar uses Apify's `labrat011/reddit-scraper`, which parses `old.reddit.com` with TLS impersonation instead of the Puppeteer-based actor that often gets 403-blocked.
 
-By default, only posts with a flair containing **Collab Request 🤝** are scanned. Override with `--flair`.
+By default, **r/UGCCreators** is searched for posts with flair **Collab Request 🤝**; **r/ugc** scrapes recent posts (no flair filter — that subreddit doesn't use the same tags). Heuristic feed filters still apply to both. Override with `--flair` or `--subreddit`.
 
 For Upwork, install Playwright's Chromium browser after `pip install`:
 
@@ -51,10 +52,14 @@ Options:
 ```bash
 python -m radar --limit 25
 python -m radar --subreddit UGCCreators
+python -m radar --subreddit ugc
+python -m radar --subreddit UGCCreators,ugc
 python -m radar --flair "Collab Request 🤝"
 ```
 
 Each run starts an Apify actor job and typically takes 15–60 seconds.
+
+By default (AI off), eligible posts are printed as plain listings (title, link, flair, author) after heuristic feed filters. Set `RADAR_AI_ENABLED=true` to restore GPT A/B/C classification.
 
 ### Upwork session auth
 
@@ -113,7 +118,17 @@ Search uses **visible Chrome by default** (same as login). Use `--headless` only
 
 Default search terms (when `--query` is omitted): UGC, User Generated Content, TikTok Creator, TikTok Content, Instagram Creator, Content Creator, Product Video, Product Review, Video Testimonial, Social Media Content.
 
-Logs (queries run, jobs found, extraction errors) go to stderr. JSON output goes to stdout — pipe to a file if needed:
+Override defaults via environment (see `.env.example`):
+
+| Variable | Purpose |
+|----------|---------|
+| `RADAR_UPWORK_SEARCH_QUERIES` | Comma-separated query list (overrides defaults) |
+| `RADAR_UPWORK_QUERIES_FILE` | Path to file with one query per line (`#` comments OK) |
+| `RADAR_UPWORK_LIMIT_PER_QUERY` | Max jobs per query when `--limit` is omitted (default: 20) |
+
+Precedence: `--query` / `--limit` CLI flags > env vars > built-in defaults. Env query list beats query file.
+
+Logs (queries run, jobs found, extraction errors) go to stderr. After a multi-query run, stderr includes a summary like `Search summary: queries=10, total_found=45, unique=38`. JSON output goes to stdout — pipe to a file if needed:
 
 ```bash
 python -m radar upwork search --query UGC --limit 5 > opportunities.jsonl
@@ -139,7 +154,61 @@ Duplicates within the same import run are caught before hitting the database.
 
 Override database path with `RADAR_DB_PATH` in `.env`.
 
+### AI features (disabled by default)
+
+GPT-based features are **off by default** — no OpenAI calls on import or Reddit scan unless you opt in.
+
+| Feature | When enabled |
+|---------|----------------|
+| Reddit scan (`python -m radar`) | A/B/C tier classification via GPT |
+| Import (`python -m radar import`) | 0–100 opportunity scoring on insert |
+| Score command (`python -m radar score`) | Score existing DB rows |
+
+Enable all AI features:
+
+```bash
+export RADAR_AI_ENABLED=true
+# OPENAI_API_KEY required — get one at platform.openai.com/api-keys
+```
+
+Per-feature overrides (optional):
+
+```bash
+export RADAR_AI_SCORING=true          # import scoring only
+export RADAR_AI_CLASSIFICATION=true   # Reddit classification only
+```
+
+When AI is enabled:
+
+```bash
+python -m radar import --platform upwork --query UGC --limit 5
+python -m radar import --platform upwork --query UGC --limit 5 --no-score  # force skip scoring
+python -m radar score --platform upwork --limit 25
+python -m radar list --platform upwork --min-score 80
+```
+
+When AI is disabled (default), import stores opportunities without scores and `python -m radar score` exits with a message.
+
 ## Output
+
+### With AI disabled (default)
+
+Each eligible post:
+
+```
+Title: ...
+Link: https://reddit.com/r/UGCCreators/comments/...
+Flair: Collab Request 🤝
+Author: u/brandname
+```
+
+Summary:
+
+```
+Fetched 25 · filtered out 3 · Showing 5 "Collab Request 🤝" posts (AI classification disabled)
+```
+
+### With AI enabled (`RADAR_AI_ENABLED=true`)
 
 For each actionable opportunity (tiers A, B, or C):
 
@@ -165,9 +234,9 @@ Scanned 5 "Collab Request 🤝" posts · 4 opportunities (2 A, 1 B, 1 C)
 
 Every opportunity includes a clickable `https://reddit.com/...` link.
 
-## Classification
+## Classification (AI enabled only)
 
-Posts are filtered **before** the AI call to cut cost and noise:
+When `RADAR_AI_ENABLED=true`, posts are filtered **before** the AI call to cut cost and noise:
 
 - Job seeker posts (creators looking for work, not brands hiring)
 - Memes and discussion threads
@@ -187,8 +256,116 @@ The AI assigns:
 - Actor runs are slower than a direct API call
 - Reddit anti-bot changes may occasionally break the scraper until Apify updates the actor
 
+## Render worker (Reddit → Slack)
+
+A Node.js worker fetches Reddit opportunities via the Python CLI, deduplicates with `SeenOpportunityStore` (`seen_opportunities.json`), sends **one batch Slack message** for new opportunities only, and persists seen keys after a successful send. Render Cron triggers it externally — no internal scheduler.
+
+Requires **Node 18+**, **Python 3**, and `npm install` + `pip install -r requirements.txt`.
+
+### Dedup architecture
+
+- **`SeenOpportunityStore`** ([`seenOpportunityStore.js`](seenOpportunityStore.js)) — only module that reads/writes the JSON store
+- Keys: `platform:external_id` (e.g. `reddit:abc123`)
+- Opportunities are marked seen **only after Slack succeeds**
+- Storage is swappable later (Redis/Postgres) without changing notification logic
+
+### Local run
+
+| Variable | Used by |
+|----------|---------|
+| `APIFY_API_TOKEN` | Python Reddit fetch |
+| `SLACK_WEBHOOK_URL` | Node Slack POST |
+| `RADAR_REDDIT_SUBREDDITS` | Optional — defaults to `UGCCreators,ugc` |
+| `SEEN_OPPORTUNITIES_PATH` | Optional — defaults to `seen_opportunities.json` |
+
+```bash
+npm install
+node worker.js
+```
+
+Expected logs:
+
+```
+Worker started
+Loaded X previously seen opportunities
+Fetched X opportunities
+Found X new opportunities
+Sending Slack notification...
+Slack notification sent successfully
+Saved seen opportunity store
+Worker finished
+```
+
+Second run with the same posts → `No new opportunities found.` (no Slack).
+
+Manual fetch:
+
+```bash
+python -m radar notify --platform reddit --subreddit UGCCreators,ugc
+```
+
+Worker tests:
+
+```bash
+npm run test:worker
+```
+
+### Render Cron setup
+
+Render cron filesystems are **ephemeral** — configure S3-compatible sync so `seen_opportunities.json` survives between runs.
+
+#### Step 1 — Push code to GitHub
+
+Commit and push to your deploy branch (e.g. `main`).
+
+#### Step 2 — Create object storage (R2 or S3)
+
+1. Create a bucket
+2. Create an API token with read/write on one object (e.g. `seen_opportunities.json`)
+3. Note bucket name, object key, and endpoint (R2 requires a custom endpoint)
+
+#### Step 3 — Create Cron Job on Render
+
+1. Render Dashboard → **New** → **Cron Job**
+2. Connect your GitHub repo
+3. Settings:
+
+| Field | Value |
+|-------|-------|
+| Name | `creator-radar-notify` |
+| Branch | `main` |
+| Runtime | **Node** |
+| Build Command | `npm install && pip install -r requirements.txt` |
+| Schedule | `*/30 * * * *` |
+| Command | `node worker.js` |
+
+4. **Environment variables**:
+
+| Variable | Required |
+|----------|----------|
+| `APIFY_API_TOKEN` | Yes |
+| `SLACK_WEBHOOK_URL` | Yes |
+| `SEEN_STORE_S3_BUCKET` | Yes (Render) |
+| `SEEN_STORE_S3_KEY` | Yes (Render) |
+| `AWS_ACCESS_KEY_ID` | Yes (Render) |
+| `AWS_SECRET_ACCESS_KEY` | Yes (Render) |
+| `SEEN_STORE_S3_ENDPOINT` | R2 only |
+| `SEEN_STORE_S3_REGION` | Optional (`auto` for R2) |
+| `SEEN_OPPORTUNITIES_PATH` | Optional (`/tmp/seen_opportunities.json`) |
+| `RADAR_REDDIT_SUBREDDITS` | Optional |
+
+5. **Manual Trigger** / **Run now** for first test
+6. Run again — second run should not re-send the same opportunities
+
+#### Verify
+
+- Render logs show the worker flow above
+- Slack receives one batch message on first run with new posts
+- Object storage contains updated `seen_opportunities.json` after success
+
 ## Tests
 
 ```bash
 pytest
+npm run test:worker
 ```

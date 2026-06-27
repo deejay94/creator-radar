@@ -12,8 +12,9 @@ from radar.connectors.types import ConnectorHealth, SearchParams
 from radar.opportunity_filters import get_male_only_creator_filter_reason
 from radar.upwork.auth import import_session, login, login_instructions
 from radar.upwork.browser import BrowserChannel
-from radar.upwork.config import DEFAULT_SEARCH_QUERIES
+from radar.upwork.config import resolve_limit_per_query, resolve_search_queries
 from radar.upwork.connector import UpworkConnector
+from radar.upwork.normalize import opportunity_to_prd_json
 from radar.upwork.errors import PlaywrightNotInstalledError, UpworkAuthError
 
 
@@ -87,14 +88,15 @@ def _configure_logging() -> None:
     )
 
 
-def cmd_search(query: str | None, limit: int, headed: bool, debug: bool) -> int:
+def cmd_search(query: str | None, limit: int | None, headed: bool, debug: bool) -> int:
     _configure_logging()
 
-    queries = [query] if query else DEFAULT_SEARCH_QUERIES
+    queries = resolve_search_queries(query)
+    limit_per_query = resolve_limit_per_query(limit)
     connector = UpworkConnector(headed=headed)
     params = SearchParams(
         queries=queries,
-        limit_per_query=limit,
+        limit_per_query=limit_per_query,
         extras={"debug": debug},
     )
 
@@ -114,7 +116,7 @@ def cmd_search(query: str | None, limit: int, headed: bool, debug: bool) -> int:
                     file=sys.stderr,
                 )
                 continue
-            print(opportunity.model_dump_json())
+            print(opportunity_to_prd_json(opportunity))
     except ConnectorUnhealthyError as exc:
         print(str(exc), file=sys.stderr)
         print("Run: python -m radar upwork login", file=sys.stderr)
@@ -162,8 +164,8 @@ def main(argv: list[str] | None = None) -> int:
     search_parser.add_argument(
         "--limit",
         type=int,
-        default=20,
-        help="Maximum jobs per query (default: 20)",
+        default=None,
+        help="Maximum jobs per query (default: RADAR_UPWORK_LIMIT_PER_QUERY or 20)",
     )
     search_parser.add_argument(
         "--headless",

@@ -26,6 +26,7 @@ class RawListingRef(BaseModel):
     url: str
     title: str = ""
     source_query: str = ""
+    extras: dict[str, Any] = Field(default_factory=dict)
 
 
 class RawListing(BaseModel):

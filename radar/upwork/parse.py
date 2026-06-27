@@ -6,6 +6,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+from radar.upwork.extract_types import UpworkExtractedJob, merge_extracted_job
+
 
 def parse_job_id_from_url(url: str) -> str:
     match = re.search(r"~([0-9a-zA-Z]+)", url)
@@ -29,14 +31,22 @@ def _parse_bool(text: str, pattern: str) -> Optional[bool]:
     return None
 
 
-def parse_listing_fields(
+def _hourly_from_job_type(job_type: str) -> Optional[bool]:
+    if re.search(r"\bHourly\b", job_type, re.IGNORECASE):
+        return True
+    if re.search(r"\bFixed[- ]?price\b", job_type, re.IGNORECASE):
+        return False
+    return None
+
+
+def _parse_listing_fields_regex(
     *,
     title: str,
     description: str,
     skills: list[str],
     features: list[str],
     page_text: str,
-) -> dict[str, Any]:
+) -> UpworkExtractedJob:
     combined = " | ".join(features + [page_text])
 
     hourly: Optional[bool] = None
@@ -89,24 +99,69 @@ def parse_listing_fields(
     category = _first_match(r"(?:Category):\s*([^|]+)", combined)
     subcategory = _first_match(r"(?:Subcategory):\s*([^|]+)", combined)
 
-    return {
-        "title": title,
-        "description": description,
-        "budget": budget,
-        "hourly": hourly,
-        "experience_level": experience_level,
-        "client_rating": client_rating,
-        "client_spend": client_spend,
-        "client_country": client_country,
-        "payment_verified": payment_verified,
-        "proposal_count": proposal_count,
-        "skills": skills,
-        "posted_time": posted_time,
-        "project_length": project_length,
-        "category": category,
-        "subcategory": subcategory,
-        "features": features,
-    }
+    return UpworkExtractedJob(
+        title=title,
+        description=description,
+        budget=budget,
+        hourly=hourly,
+        experience_level=experience_level,
+        client_rating=client_rating,
+        client_spend=client_spend,
+        client_country=client_country,
+        payment_verified=payment_verified,
+        proposal_count=proposal_count,
+        skills=skills,
+        posted_time=posted_time,
+        project_length=project_length,
+        category=category,
+        subcategory=subcategory,
+        features=features,
+    )
+
+
+def normalize_dom_fields(dom_fields: dict[str, Any] | None) -> dict[str, Any]:
+    if not dom_fields:
+        return {}
+
+    normalized = dict(dom_fields)
+    job_type = str(normalized.pop("job_type", "") or "")
+    if normalized.get("hourly") is None and job_type:
+        normalized["hourly"] = _hourly_from_job_type(job_type)
+    if not normalized.get("budget") and job_type and "$" in job_type:
+        normalized["budget"] = job_type
+    return normalized
+
+
+def parse_listing_fields(
+    *,
+    title: str,
+    description: str,
+    skills: list[str],
+    features: list[str],
+    page_text: str,
+    dom_fields: dict[str, Any] | None = None,
+    tile_fields: dict[str, Any] | None = None,
+    job_id: str = "",
+    url: str = "",
+    search_query: str = "",
+) -> UpworkExtractedJob:
+    regex_job = _parse_listing_fields_regex(
+        title=title,
+        description=description,
+        skills=skills,
+        features=features,
+        page_text=page_text,
+    )
+    merged = merge_extracted_job(
+        regex_job=regex_job,
+        dom_fields=normalize_dom_fields(dom_fields),
+        tile_fields=tile_fields,
+        job_id=job_id,
+        url=url,
+        search_query=search_query,
+    )
+    merged.log_field_completeness()
+    return merged
 
 
 def parse_posted_at(posted_time: str) -> Optional[datetime]:

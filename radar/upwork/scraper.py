@@ -25,7 +25,51 @@ SEARCH_JOB_LINKS_JS = """
   const results = [];
   const seen = new Set();
 
-  const addJob = (id, title, href) => {
+  const textFrom = (root, selectors) => {
+    for (const sel of selectors) {
+      const el = root.querySelector(sel);
+      if (el) {
+        const value = (el.textContent || '').replace(/\\s+/g, ' ').trim();
+        if (value) return value;
+      }
+    }
+    return '';
+  };
+
+  const extractTileFields = (card) => {
+    const budget = textFrom(card, [
+      '[data-test="budget"]',
+      '[data-test="JobBudget"]',
+      '[data-test="job-type-label"] strong',
+      '[data-test="job-type-label"]',
+    ]);
+    const jobType = textFrom(card, [
+      '[data-test="job-type-label"]',
+      '[data-test="JobTypeLabel"]',
+    ]);
+    const experienceLevel = textFrom(card, [
+      '[data-test="experience-level"]',
+      '[data-test="ExperienceLevel"]',
+    ]);
+    const postedTime = textFrom(card, [
+      '[data-test="job-pubilshed-date"]',
+      '[data-test="job-published-date"]',
+      '[data-test="PostedOn"]',
+    ]);
+    const proposalCount = textFrom(card, [
+      '[data-test="proposals-tier"]',
+      '[data-test="ProposalsTier"]',
+    ]);
+    const tile = {};
+    if (budget) tile.budget = budget;
+    if (jobType) tile.job_type = jobType;
+    if (experienceLevel) tile.experience_level = experienceLevel;
+    if (postedTime) tile.posted_time = postedTime;
+    if (proposalCount) tile.proposal_count = proposalCount;
+    return tile;
+  };
+
+  const addJob = (id, title, href, card) => {
     if (!id || seen.has(id)) return;
     const cleanTitle = (title || '').replace(/\\s+/g, ' ').trim();
     if (!cleanTitle || cleanTitle.length < 3) return;
@@ -37,7 +81,13 @@ SEARCH_JOB_LINKS_JS = """
     if (!url) {
       url = 'https://www.upwork.com/jobs/~' + id;
     }
-    results.push({ external_id: id, url: url.split('?')[0], title: cleanTitle });
+    const tile = card ? extractTileFields(card) : {};
+    results.push({
+      external_id: id,
+      url: url.split('?')[0],
+      title: cleanTitle,
+      tile,
+    });
   };
 
   const cards = document.querySelectorAll(
@@ -51,7 +101,7 @@ SEARCH_JOB_LINKS_JS = """
     const href = titleEl.getAttribute('href') || titleEl.href || '';
     const match = href.match(/~([0-9a-zA-Z]+)/);
     if (!match) continue;
-    addJob(match[1], titleEl.textContent || '', href);
+    addJob(match[1], titleEl.textContent || '', href, card);
   }
 
   if (results.length === 0) {
@@ -60,7 +110,7 @@ SEARCH_JOB_LINKS_JS = """
       if (!/jobs|details|~/.test(href)) continue;
       const match = href.match(/~([0-9a-zA-Z]+)/);
       if (!match) continue;
-      addJob(match[1], a.textContent || '', href);
+      addJob(match[1], a.textContent || '', href, null);
     }
   }
 
@@ -135,12 +185,81 @@ EXTRACT_JOB_JS = """
     '.job-title',
   ]);
 
+  const budget = allText([
+    '[data-test="budget"]',
+    '[data-test="JobBudget"]',
+    '[data-test="job-type-label"] strong',
+  ]);
+  const jobType = allText([
+    '[data-test="job-type-label"]',
+    '[data-test="JobTypeLabel"]',
+  ]);
+  const experienceLevel = allText([
+    '[data-test="experience-level"]',
+    '[data-test="ExperienceLevel"]',
+  ]);
+  const postedTime = allText([
+    '[data-test="job-pubilshed-date"]',
+    '[data-test="job-published-date"]',
+    '[data-test="PostedOn"]',
+  ]);
+  const proposalCount = allText([
+    '[data-test="proposals-tier"]',
+    '[data-test="ProposalsTier"]',
+  ]);
+  const clientRating = allText([
+    '[data-test="total-feedback"]',
+    '[data-test="client-rating"]',
+    '[data-test="feedback-score"]',
+  ]);
+  const clientSpend = allText([
+    '[data-test="client-spend"]',
+    '[data-test="total-spent"]',
+  ]);
+  const clientCountry = allText([
+    '[data-test="client-country"]',
+    '[data-test="LocationLabel"]',
+    '[data-test="location"]',
+  ]);
+  const projectLength = allText([
+    '[data-test="duration-label"]',
+    '[data-test="project-length"]',
+  ]);
+  const category = allText([
+    '[data-test="category"]',
+    '[data-test="Category"]',
+  ]);
+  const subcategory = allText([
+    '[data-test="subcategory"]',
+    '[data-test="Subcategory"]',
+  ]);
+  const paymentVerified = !!document.querySelector(
+    '[data-test="payment-verified"], [data-test="payment-verification-status"], [data-test="PaymentVerified"]'
+  );
+
   return {
     title,
     description,
     skills,
     features,
     page_text: (document.body.innerText || '').slice(0, 12000),
+    dom: {
+      title,
+      description,
+      budget: budget || jobType,
+      job_type: jobType,
+      experience_level: experienceLevel,
+      posted_time: postedTime,
+      proposal_count: proposalCount,
+      client_rating: clientRating,
+      client_spend: clientSpend,
+      client_country: clientCountry,
+      project_length: projectLength,
+      category,
+      subcategory,
+      skills,
+      payment_verified: paymentVerified ? true : null,
+    },
   };
 }
 """
@@ -164,7 +283,7 @@ def _should_capture_response(url: str) -> bool:
     return any(hint in lower for hint in _API_URL_HINTS)
 
 
-def _extract_refs_from_page(page: Any) -> list[dict[str, str]]:
+def _extract_refs_from_page(page: Any) -> list[dict[str, Any]]:
     try:
         items = page.evaluate(SEARCH_JOB_LINKS_JS)
     except Exception as exc:
@@ -258,12 +377,15 @@ def search_jobs(context: Any, query: str, limit: int, *, debug: bool = False) ->
                     continue
                 if any(existing.external_id == external_id for existing in refs):
                     continue
+                tile = item.get("tile") or {}
+                extras = {"tile": tile} if isinstance(tile, dict) and tile else {}
                 refs.append(
                     RawListingRef(
                         external_id=external_id,
                         url=job_url,
                         title=title,
                         source_query=query,
+                        extras=extras,
                     )
                 )
                 if len(refs) >= limit:
@@ -327,6 +449,8 @@ def extract_job(context: Any, ref: RawListingRef) -> RawListing:
         skills = data.get("skills") or []
         features = data.get("features") or []
         page_text = data.get("page_text") or ""
+        dom_fields = data.get("dom") if isinstance(data.get("dom"), dict) else {}
+        tile_fields = ref.extras.get("tile") if isinstance(ref.extras.get("tile"), dict) else {}
 
         if not title and not description:
             raise ExtractionError(
@@ -334,16 +458,19 @@ def extract_job(context: Any, ref: RawListingRef) -> RawListing:
                 url=job_url,
             )
 
-        payload = parse_listing_fields(
+        extracted = parse_listing_fields(
             title=title,
             description=description,
             skills=skills if isinstance(skills, list) else [],
             features=features if isinstance(features, list) else [],
             page_text=page_text if isinstance(page_text, str) else "",
+            dom_fields=dom_fields,
+            tile_fields=tile_fields,
+            job_id=ref.external_id,
+            url=job_url,
+            search_query=ref.source_query,
         )
-        payload["job_id"] = ref.external_id
-        payload["url"] = job_url
-        payload["search_query"] = ref.source_query
+        payload = extracted.model_dump()
 
         try:
             external_id = parse_job_id_from_url(job_url)
