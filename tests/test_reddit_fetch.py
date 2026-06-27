@@ -8,6 +8,7 @@ from radar.reddit import (
     RedditClient,
     RedditConfigError,
     _map_apify_item,
+    _read_apify_run,
     get_subreddit_scrape_config,
     matches_flair,
     resolve_subreddits,
@@ -132,6 +133,64 @@ def test_matches_flair_rejects_non_matches():
     assert not matches_flair("Collab request", DEFAULT_FLAIR_FILTER)
     assert not matches_flair("Question", DEFAULT_FLAIR_FILTER)
     assert not matches_flair("", DEFAULT_FLAIR_FILTER)
+
+
+def test_read_apify_run_from_dict():
+    status, run_id, dataset_id = _read_apify_run(
+        {"status": "SUCCEEDED", "id": "run-1", "defaultDatasetId": "dataset-123"}
+    )
+    assert status == "SUCCEEDED"
+    assert run_id == "run-1"
+    assert dataset_id == "dataset-123"
+
+
+def test_read_apify_run_from_typed_model():
+    class Run:
+        status = "SUCCEEDED"
+        id = "run-2"
+        default_dataset_id = "dataset-456"
+
+    status, run_id, dataset_id = _read_apify_run(Run())
+    assert status == "SUCCEEDED"
+    assert run_id == "run-2"
+    assert dataset_id == "dataset-456"
+
+
+def test_fetch_posts_accepts_typed_apify_run():
+    mock_dataset = MagicMock()
+    mock_dataset.iterate_items.return_value = [
+        {
+            "type": "post",
+            "id": "ugc001",
+            "title": "Brand looking for creators",
+            "selftext": "Paid UGC opportunity",
+            "author": "brand",
+            "subreddit": "ugc",
+            "flair": "",
+            "url": "https://www.reddit.com/r/ugc/comments/ugc001/test/",
+        }
+    ]
+
+    class Run:
+        status = "SUCCEEDED"
+        id = "run-typed"
+        default_dataset_id = "dataset-123"
+
+    mock_actor = MagicMock()
+    mock_actor.call.return_value = Run()
+
+    mock_client = MagicMock()
+    mock_client.actor.return_value = mock_actor
+    mock_client.dataset.return_value = mock_dataset
+
+    env = {"APIFY_API_TOKEN": "apify_api_test_token"}
+    with patch.dict("os.environ", env, clear=True):
+        with patch("radar.reddit.ApifyClient", return_value=mock_client):
+            client = RedditClient()
+            posts = client.fetch_posts(subreddit="ugc", limit=25)
+
+    assert len(posts) == 1
+    mock_client.dataset.assert_called_once_with("dataset-123")
 
 
 def test_fetch_posts_requires_apify_token():

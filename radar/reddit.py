@@ -79,6 +79,20 @@ def matches_flair(flair: str, filter_text: str) -> bool:
     return filter_text.lower() in flair.lower()
 
 
+def _read_apify_run(run: object) -> tuple[str | None, str | None, str | None]:
+    """Read status, run id, and dataset id from Apify actor.call() result.
+
+    apify-client v1 returns dicts; v3 returns Pydantic Run models with snake_case fields.
+    """
+    if isinstance(run, dict):
+        return run.get("status"), run.get("id"), run.get("defaultDatasetId")
+
+    status = getattr(run, "status", None)
+    run_id = getattr(run, "id", None)
+    dataset_id = getattr(run, "default_dataset_id", None) or getattr(run, "defaultDatasetId", None)
+    return status, run_id, dataset_id
+
+
 def _map_apify_item(item: dict, subreddit: str) -> RedditPost | None:
     # labrat011/reddit-scraper output
     if item.get("type") == "post":
@@ -220,15 +234,12 @@ class RedditClient:
             run_input=self._build_run_input(subreddit, limit, flair_filter, config)
         )
 
-        status = run.get("status")
+        status, run_id, dataset_id = _read_apify_run(run)
         if status and status != "SUCCEEDED":
-            run_id = run.get("id", "unknown")
             raise RuntimeError(
                 f"Apify actor run failed with status {status} for r/{subreddit}. "
-                f"Check logs at https://console.apify.com/actors/runs/{run_id}"
+                f"Check logs at https://console.apify.com/actors/runs/{run_id or 'unknown'}"
             )
-
-        dataset_id = run.get("defaultDatasetId")
         if not dataset_id:
             raise RuntimeError("Apify actor run did not return a dataset ID")
 
