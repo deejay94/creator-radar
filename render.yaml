@@ -23,3 +23,6 @@ services:
       # Required for Upwork on Render — mount session JSON via Secret File
       - key: UPWORK_SESSION_PATH
         sync: false
+      # Chromium binaries installed at build time into .playwright-browsers
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src/.playwright-browsers

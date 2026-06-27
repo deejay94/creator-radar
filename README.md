@@ -375,8 +375,9 @@ Render cron containers use an **ephemeral filesystem** — a local JSON file is 
 Upwork uses headless Playwright with a pre-exported session file. Interactive login does not work on Render.
 
 1. Locally: `python -m radar upwork login` → creates `~/.creator-radar/upwork-session.json`
-2. Upload that file to Render as a **Secret File** and set `UPWORK_SESSION_PATH` to its mounted path
-3. Headless Upwork search may return fewer jobs or hit CAPTCHA — monitor logs after deploy
+2. Upload that file to Render as a **Secret File** and set `UPWORK_SESSION_PATH=/etc/secrets/upwork-session.json`
+3. Set `PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.playwright-browsers` (Chromium is installed into the repo at build time via `build.sh`)
+4. Headless Upwork search may return fewer jobs or hit CAPTCHA — monitor logs after deploy
 
 Without Redis on Render, every cron run starts with an empty seen store and **will re-send the same posts**. Local development can use repo-root `seen_opportunities.json` without Redis.
 

@@ -9,3 +9,4 @@ node_modules/
 .creator-radar/
 seen_opportunities.json
 upwork-session.json
+.playwright-browsers/
