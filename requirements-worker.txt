@@ -1,0 +1,5 @@
+# Minimal Python deps for the Render worker (Reddit fetch only)
+apify-client>=1.6.0
+httpx>=0.28.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0

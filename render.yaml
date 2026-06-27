@@ -1,0 +1,15 @@
+services:
+  - type: cron
+    name: creator-radar-notify
+    runtime: node
+    branch: main
+    buildCommand: bash build.sh
+    schedule: "*/30 * * * *"
+    startCommand: node worker.js
+    envVars:
+      - key: APIFY_API_TOKEN
+        sync: false
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      - key: SEEN_OPPORTUNITIES_PATH
+        value: /tmp/seen_opportunities.json

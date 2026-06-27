@@ -283,6 +283,12 @@ npm install
 node worker.js
 ```
 
+Render uses [`build.sh`](build.sh) to install Node deps and a Python `.venv` (the worker runs `.venv/bin/python` automatically).
+
+```bash
+bash build.sh
+```
+
 Expected logs:
 
 ```
@@ -335,7 +341,7 @@ Commit and push to your deploy branch (e.g. `main`).
 | Name | `creator-radar-notify` |
 | Branch | `main` |
 | Runtime | **Node** |
-| Build Command | `npm install && pip install -r requirements.txt` |
+| Build Command | `bash build.sh` |
 | Schedule | `*/30 * * * *` |
 | Command | `node worker.js` |
 
