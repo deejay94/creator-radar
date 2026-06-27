@@ -11,5 +11,10 @@ services:
         sync: false
       - key: SLACK_WEBHOOK_URL
         sync: false
-      - key: SEEN_OPPORTUNITIES_PATH
-        value: /tmp/seen_opportunities.json
+      # Required for cross-run dedup on Render (Upstash Redis)
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: SEEN_STORE_REDIS_KEY
+        value: creator-radar:seen

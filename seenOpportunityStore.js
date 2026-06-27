@@ -7,7 +7,7 @@ export class SeenOpportunityStore {
     this.seen = {};
   }
 
-  load() {
+  async load() {
     this.seen = {};
 
     if (!existsSync(this.filePath)) {
@@ -32,11 +32,17 @@ export class SeenOpportunityStore {
     }
   }
 
-  save() {
-    mkdirSync(dirname(this.filePath), { recursive: true });
-    const tempPath = `${this.filePath}.tmp`;
-    writeFileSync(tempPath, `${JSON.stringify(this.seen, null, 2)}\n`, "utf8");
-    renameSync(tempPath, this.filePath);
+  async save() {
+    try {
+      mkdirSync(dirname(this.filePath), { recursive: true });
+      const tempPath = `${this.filePath}.tmp`;
+      writeFileSync(tempPath, `${JSON.stringify(this.seen, null, 2)}\n`, "utf8");
+      renameSync(tempPath, this.filePath);
+      return true;
+    } catch (error) {
+      console.error(`Failed to save seen opportunity store: ${error.message}`);
+      return false;
+    }
   }
 
   has(key) {

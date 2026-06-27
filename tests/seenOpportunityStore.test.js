@@ -16,39 +16,39 @@ test("makeOpportunityKey builds platform:external_id", () => {
   );
 });
 
-test("SeenOpportunityStore loads missing file as empty", () => {
+test("SeenOpportunityStore loads missing file as empty", async () => {
   const dir = mkdtempSync(join(tmpdir(), "seen-store-"));
   const filePath = join(dir, "seen_opportunities.json");
   const store = new SeenOpportunityStore(filePath);
 
-  store.load();
+  await store.load();
 
   assert.equal(store.count(), 0);
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("SeenOpportunityStore recovers from invalid JSON", () => {
+test("SeenOpportunityStore recovers from invalid JSON", async () => {
   const dir = mkdtempSync(join(tmpdir(), "seen-store-"));
   const filePath = join(dir, "seen_opportunities.json");
   writeFileSync(filePath, "not-json", "utf8");
 
   const store = new SeenOpportunityStore(filePath);
-  store.load();
+  await store.load();
 
   assert.equal(store.count(), 0);
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("SeenOpportunityStore saves and reloads keys", () => {
+test("SeenOpportunityStore saves and reloads keys", async () => {
   const dir = mkdtempSync(join(tmpdir(), "seen-store-"));
   const filePath = join(dir, "seen_opportunities.json");
   const store = new SeenOpportunityStore(filePath);
 
   store.mark("reddit:abc123");
-  store.save();
+  assert.equal(await store.save(), true);
 
   const reloaded = new SeenOpportunityStore(filePath);
-  reloaded.load();
+  await reloaded.load();
 
   assert.equal(reloaded.count(), 1);
   assert.equal(reloaded.has("reddit:abc123"), true);

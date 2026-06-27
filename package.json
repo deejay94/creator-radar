@@ -6,9 +6,9 @@
     "node": ">=18"
   },
   "scripts": {
-    "test:worker": "node --test tests/seenOpportunityStore.test.js"
+    "test:worker": "node --test tests/seenOpportunityStore.test.js tests/seenStoreFactory.test.js tests/redisSeenOpportunityStore.test.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.888.0"
+    "@upstash/redis": "^1.36.2"
   }
 }

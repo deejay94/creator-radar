@@ -258,13 +258,13 @@ The AI assigns:
 
 ## Render worker (Reddit → Slack)
 
-A Node.js worker fetches Reddit opportunities via the Python CLI, deduplicates with `SeenOpportunityStore` (`seen_opportunities.json`), sends **one batch Slack message** for new opportunities only, and persists seen keys after a successful send. Render Cron triggers it externally — no internal scheduler.
+A Node.js worker fetches Reddit opportunities via the Python CLI, deduplicates with a seen-opportunity store (local JSON or Upstash Redis on Render), sends **one batch Slack message** for new opportunities only, and persists seen keys after a successful send. Render Cron triggers it externally — no internal scheduler.
 
 Requires **Node 18+**, **Python 3**, and `bash build.sh` (or `npm install` locally).
 
 ### Local development (recommended)
 
-Dedup state lives in **`seen_opportunities.json`** in the repo root (gitignored). No S3/R2 needed locally.
+Dedup state lives in **`seen_opportunities.json`** in the repo root (gitignored). No Redis needed locally.
 
 1. Copy env vars into `.env` (`APIFY_API_TOKEN`, `SLACK_WEBHOOK_URL`)
 2. Install deps:
@@ -289,12 +289,14 @@ rm seen_opportunities.json
 
 ### Dedup architecture
 
-- **`SeenOpportunityStore`** ([`seenOpportunityStore.js`](seenOpportunityStore.js)) — only module that reads/writes the JSON store
+- **`createSeenOpportunityStore()`** ([`seenStoreFactory.js`](seenStoreFactory.js)) — picks file store (local) or Redis store (Render)
+- **`SeenOpportunityStore`** ([`seenOpportunityStore.js`](seenOpportunityStore.js)) — local JSON file backend
+- **`RedisSeenOpportunityStore`** ([`redisSeenOpportunityStore.js`](redisSeenOpportunityStore.js)) — Upstash Redis SET backend
 - Keys: `platform:external_id` (e.g. `reddit:abc123`)
 - Opportunities are marked seen **only after Slack succeeds**
-- Storage is swappable later (Redis/Postgres) without changing notification logic
+- Persist failure after Slack exits non-zero so the next run does not silently re-notify
 
-**Env vars:** `APIFY_API_TOKEN`, `SLACK_WEBHOOK_URL`, optional `RADAR_REDDIT_SUBREDDITS`, optional `SEEN_OPPORTUNITIES_PATH` (default `seen_opportunities.json`).
+**Env vars:** `APIFY_API_TOKEN`, `SLACK_WEBHOOK_URL`, optional `RADAR_REDDIT_SUBREDDITS`, optional `SEEN_OPPORTUNITIES_PATH` (local file, default `seen_opportunities.json`), optional `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` + `SEEN_STORE_REDIS_KEY` (Render).
 
 Manual fetch:
 
@@ -310,7 +312,7 @@ npm run test:worker
 
 ### Render Cron setup
 
-**Without S3/R2 (current):** each cron run starts with an empty seen store, so the same Reddit posts may be sent to Slack again on every run. Use local `seen_opportunities.json` for development; add S3/R2 env vars later for production dedup.
+Render cron containers use an **ephemeral filesystem** — a local JSON file is wiped after each run. **Upstash Redis is required for production dedup** so seen keys persist between runs.
 
 #### Create Cron Job on Render
 
@@ -327,17 +329,35 @@ npm run test:worker
 | Schedule | `*/30 * * * *` |
 | Command | `node worker.js` |
 
-4. **Environment variables** (minimum for now):
+4. **Environment variables**
 
-| Variable | Required |
-|----------|----------|
-| `APIFY_API_TOKEN` | Yes |
-| `SLACK_WEBHOOK_URL` | Yes |
-| `RADAR_REDDIT_SUBREDDITS` | Optional |
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `APIFY_API_TOKEN` | Yes | Apify API token |
+| `SLACK_WEBHOOK_URL` | Yes | Slack incoming webhook |
+| `UPSTASH_REDIS_REST_URL` | Yes (Render) | From Upstash dashboard |
+| `UPSTASH_REDIS_REST_TOKEN` | Yes (Render) | From Upstash dashboard |
+| `SEEN_STORE_REDIS_KEY` | Optional | Redis SET key (default: `creator-radar:seen`) |
+| `RADAR_REDDIT_SUBREDDITS` | Optional | Default: `UGCCreators,ugc` |
 
-Do **not** set S3/R2 vars until you want cross-run dedup on Render.
+#### Upstash Redis setup
 
-5. **Manual Trigger** → check logs for `Worker started` … `Worker finished`
+1. [Upstash Console](https://console.upstash.com/) → **Create database**
+2. Copy **UPSTASH_REDIS_REST_URL** and **UPSTASH_REDIS_REST_TOKEN**
+3. Add them to your Render cron job env vars
+
+#### Verify dedup on Render
+
+1. **Manual Trigger** (first run) — logs should include:
+   - `Redis dedup store: enabled`
+   - `Slack notification sent successfully`
+   - `Saved seen opportunity store`
+2. **Manual Trigger** again — logs should include:
+   - `Loaded N previously seen opportunities` (N > 0)
+   - `No new opportunities found.` (no Slack message)
+3. In Upstash console, SET `creator-radar:seen` should contain members like `reddit:abc123`
+
+Without Redis on Render, every cron run starts with an empty seen store and **will re-send the same posts**. Local development can use repo-root `seen_opportunities.json` without Redis.
 
 ## Tests
 

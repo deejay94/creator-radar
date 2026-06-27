@@ -28,6 +28,28 @@ export async function processNewOpportunities({
 }) {
   const { newOpportunities, keys } = filterNewOpportunities(opportunities, store);
 
+  // #region agent log
+  fetch("http://127.0.0.1:7487/ingest/7631985e-2777-4bcc-91c0-d0567bba16f9", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "84bf78" },
+    body: JSON.stringify({
+      sessionId: "84bf78",
+      runId: "dedup-debug",
+      hypothesisId: "D",
+      location: "notificationService.js:filter",
+      message: "Dedup filter result",
+      data: {
+        fetchedCount: opportunities.length,
+        seenCount: store.count(),
+        newCount: newOpportunities.length,
+        sampleNewKeys: keys.slice(0, 3),
+        sampleFetchedIds: opportunities.slice(0, 3).map((o) => o.external_id),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
   console.log(`Found ${newOpportunities.length} new opportunities`);
 
   if (newOpportunities.length === 0) {
@@ -51,8 +73,12 @@ export async function processNewOpportunities({
 
   console.log("Slack notification sent successfully");
   store.markMany(keys);
-  store.save();
-  console.log("Saved seen opportunity store");
+  const saved = await store.save();
+  if (!saved) {
+    console.error("Failed to persist dedup state");
+    return { sent: true, newCount: newOpportunities.length, persistFailed: true };
+  }
 
+  console.log("Saved seen opportunity store");
   return { sent: true, newCount: newOpportunities.length };
 }

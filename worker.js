@@ -4,8 +4,7 @@ import { resolve } from "node:path";
 
 import { formatSlackMessage } from "./formatSlackMessage.js";
 import { processNewOpportunities } from "./notificationService.js";
-import { SeenOpportunityStore } from "./seenOpportunityStore.js";
-import { downloadSeenStore, uploadSeenStore } from "./seenStoreSync.js";
+import { createSeenOpportunityStore, isRemoteStoreEnabled } from "./seenStoreFactory.js";
 import { sendSlackNotification } from "./slackNotifier.js";
 
 function loadEnvFile(path = ".env") {
@@ -92,11 +91,32 @@ async function main() {
   loadEnvFile();
 
   console.log("Worker started");
+  const remoteEnabled = isRemoteStoreEnabled();
+  console.log(`Redis dedup store: ${remoteEnabled ? "enabled" : "disabled"}`);
 
-  await downloadSeenStore();
-
-  const store = new SeenOpportunityStore();
-  store.load();
+  const store = createSeenOpportunityStore();
+  // #region agent log
+  fetch("http://127.0.0.1:7487/ingest/7631985e-2777-4bcc-91c0-d0567bba16f9", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "84bf78" },
+    body: JSON.stringify({
+      sessionId: "84bf78",
+      runId: "dedup-debug",
+      hypothesisId: "A",
+      location: "worker.js:main",
+      message: "Store backend selected",
+      data: {
+        remoteEnabled,
+        storeType: store.constructor.name,
+        redisKey: process.env.SEEN_STORE_REDIS_KEY || "creator-radar:seen",
+        hasRedisUrl: Boolean(process.env.UPSTASH_REDIS_REST_URL?.trim()),
+        hasRedisToken: Boolean(process.env.UPSTASH_REDIS_REST_TOKEN?.trim()),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+  await store.load();
   console.log(`Loaded ${store.count()} previously seen opportunities`);
 
   const pythonCommand = resolvePythonCommand();
@@ -116,8 +136,9 @@ async function main() {
     formatSlackMessage,
   });
 
-  if (result.sent) {
-    await uploadSeenStore();
+  if (result.persistFailed) {
+    console.error("Failed to persist dedup state to remote store");
+    process.exit(1);
   }
 
   console.log("Worker finished");
@@ -125,5 +146,5 @@ async function main() {
 
 main().catch((error) => {
   console.error("Worker error:", error);
-  process.exit(0);
+  process.exit(1);
 });
