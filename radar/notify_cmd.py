@@ -7,11 +7,11 @@ import json
 import os
 import sys
 
+from radar.cli_utils import build_search_params, configure_logging
 from radar.connectors.errors import ConnectorError, ConnectorUnhealthyError
 from radar.connectors.registry import get_connector
 from radar.connectors.types import Opportunity
 from radar.fetch_service import fetch_eligible_opportunities
-from radar.import_cmd import _build_search_params, _configure_logging
 from radar.reddit import DEFAULT_FLAIR_FILTER, DEFAULT_SUBREDDITS_CSV, resolve_subreddits
 from radar.upwork.errors import PlaywrightNotInstalledError, UpworkAuthError
 
@@ -26,7 +26,7 @@ def opportunity_to_notify_json(opportunity: Opportunity) -> dict[str, str]:
 
 
 def cmd_notify_fetch(argv: list[str] | None = None) -> int:
-    _configure_logging()
+    configure_logging()
 
     parser = argparse.ArgumentParser(description="Fetch opportunities and list them as JSON")
     parser.add_argument(
@@ -60,7 +60,7 @@ def cmd_notify_fetch(argv: list[str] | None = None) -> int:
     connector = get_connector(platform, headed=True)
     subreddit = args.subreddit or os.environ.get("RADAR_REDDIT_SUBREDDITS") or DEFAULT_SUBREDDITS_CSV
     args.subreddit = subreddit
-    params = _build_search_params(platform, args)
+    params = build_search_params(platform, args)
     subreddits = resolve_subreddits(subreddit)
 
     try:

@@ -22,7 +22,7 @@ Fill in `.env`:
 | Variable | Required | Notes |
 |----------|----------|-------|
 | `APIFY_API_TOKEN` | Yes | [console.apify.com/account/integrations](https://console.apify.com/account/integrations) |
-| `OPENAI_API_KEY` | No | Only needed when `RADAR_AI_ENABLED=true` |
+| `OPENAI_API_KEY` | No | Only if using AI — install with `pip install -r requirements-ai.txt` |
 | `APIFY_ACTOR_ID` | No | Defaults to `labrat011/reddit-scraper` (HTTP + old.reddit.com; avoids Puppeteer 403s) |
 | `UPWORK_SESSION_PATH` | No | Defaults to `~/.creator-radar/upwork-session.json` |
 | `RADAR_AI_ENABLED` | No | Master AI switch (default: off) |
@@ -260,7 +260,32 @@ The AI assigns:
 
 A Node.js worker fetches Reddit opportunities via the Python CLI, deduplicates with `SeenOpportunityStore` (`seen_opportunities.json`), sends **one batch Slack message** for new opportunities only, and persists seen keys after a successful send. Render Cron triggers it externally — no internal scheduler.
 
-Requires **Node 18+**, **Python 3**, and `npm install` + `pip install -r requirements.txt`.
+Requires **Node 18+**, **Python 3**, and `bash build.sh` (or `npm install` locally).
+
+### Local development (recommended)
+
+Dedup state lives in **`seen_opportunities.json`** in the repo root (gitignored). No S3/R2 needed locally.
+
+1. Copy env vars into `.env` (`APIFY_API_TOKEN`, `SLACK_WEBHOOK_URL`)
+2. Install deps:
+
+```bash
+bash build.sh
+```
+
+3. Run the worker:
+
+```bash
+node worker.js
+```
+
+4. Run again — same posts should log `No new opportunities found.` and skip Slack. Check `seen_opportunities.json` for keys like `"reddit:abc123": true`.
+
+To reset dedup locally, delete the file:
+
+```bash
+rm seen_opportunities.json
+```
 
 ### Dedup architecture
 
@@ -269,40 +294,7 @@ Requires **Node 18+**, **Python 3**, and `npm install` + `pip install -r require
 - Opportunities are marked seen **only after Slack succeeds**
 - Storage is swappable later (Redis/Postgres) without changing notification logic
 
-### Local run
-
-| Variable | Used by |
-|----------|---------|
-| `APIFY_API_TOKEN` | Python Reddit fetch |
-| `SLACK_WEBHOOK_URL` | Node Slack POST |
-| `RADAR_REDDIT_SUBREDDITS` | Optional — defaults to `UGCCreators,ugc` |
-| `SEEN_OPPORTUNITIES_PATH` | Optional — defaults to `seen_opportunities.json` |
-
-```bash
-npm install
-node worker.js
-```
-
-Render uses [`build.sh`](build.sh) to install Node deps and a Python `.venv` (the worker runs `.venv/bin/python` automatically).
-
-```bash
-bash build.sh
-```
-
-Expected logs:
-
-```
-Worker started
-Loaded X previously seen opportunities
-Fetched X opportunities
-Found X new opportunities
-Sending Slack notification...
-Slack notification sent successfully
-Saved seen opportunity store
-Worker finished
-```
-
-Second run with the same posts → `No new opportunities found.` (no Slack).
+**Env vars:** `APIFY_API_TOKEN`, `SLACK_WEBHOOK_URL`, optional `RADAR_REDDIT_SUBREDDITS`, optional `SEEN_OPPORTUNITIES_PATH` (default `seen_opportunities.json`).
 
 Manual fetch:
 
@@ -318,19 +310,9 @@ npm run test:worker
 
 ### Render Cron setup
 
-Render cron filesystems are **ephemeral** — configure S3-compatible sync so `seen_opportunities.json` survives between runs.
+**Without S3/R2 (current):** each cron run starts with an empty seen store, so the same Reddit posts may be sent to Slack again on every run. Use local `seen_opportunities.json` for development; add S3/R2 env vars later for production dedup.
 
-#### Step 1 — Push code to GitHub
-
-Commit and push to your deploy branch (e.g. `main`).
-
-#### Step 2 — Create object storage (R2 or S3)
-
-1. Create a bucket
-2. Create an API token with read/write on one object (e.g. `seen_opportunities.json`)
-3. Note bucket name, object key, and endpoint (R2 requires a custom endpoint)
-
-#### Step 3 — Create Cron Job on Render
+#### Create Cron Job on Render
 
 1. Render Dashboard → **New** → **Cron Job**
 2. Connect your GitHub repo
@@ -345,29 +327,17 @@ Commit and push to your deploy branch (e.g. `main`).
 | Schedule | `*/30 * * * *` |
 | Command | `node worker.js` |
 
-4. **Environment variables**:
+4. **Environment variables** (minimum for now):
 
 | Variable | Required |
 |----------|----------|
 | `APIFY_API_TOKEN` | Yes |
 | `SLACK_WEBHOOK_URL` | Yes |
-| `SEEN_STORE_S3_BUCKET` | Yes (Render) |
-| `SEEN_STORE_S3_KEY` | Yes (Render) |
-| `AWS_ACCESS_KEY_ID` | Yes (Render) |
-| `AWS_SECRET_ACCESS_KEY` | Yes (Render) |
-| `SEEN_STORE_S3_ENDPOINT` | R2 only |
-| `SEEN_STORE_S3_REGION` | Optional (`auto` for R2) |
-| `SEEN_OPPORTUNITIES_PATH` | Optional (`/tmp/seen_opportunities.json`) |
 | `RADAR_REDDIT_SUBREDDITS` | Optional |
 
-5. **Manual Trigger** / **Run now** for first test
-6. Run again — second run should not re-send the same opportunities
+Do **not** set S3/R2 vars until you want cross-run dedup on Render.
 
-#### Verify
-
-- Render logs show the worker flow above
-- Slack receives one batch message on first run with new posts
-- Object storage contains updated `seen_opportunities.json` after success
+5. **Manual Trigger** → check logs for `Worker started` … `Worker finished`
 
 ## Tests
 

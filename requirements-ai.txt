@@ -1,0 +1,2 @@
+# Optional — only for AI classification/scoring (pip install -r requirements-ai.txt)
+openai>=1.55.0

@@ -3,46 +3,24 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 
+from radar.cli_utils import build_search_params, configure_logging
 from radar.connectors.errors import ConnectorError, ConnectorUnhealthyError
 from radar.connectors.registry import get_connector
 from radar.connectors.types import SearchParams
 from radar.db.import_service import import_opportunities
 from radar.db.repository import OpportunityRepository
 from radar.reddit import DEFAULT_FLAIR_FILTER, DEFAULT_SUBREDDITS
-from radar.upwork.config import resolve_limit_per_query, resolve_search_queries
 from radar.upwork.errors import PlaywrightNotInstalledError, UpworkAuthError
 
 
 def _configure_logging() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s %(message)s",
-        stream=sys.stderr,
-    )
+    configure_logging()
 
 
 def _build_search_params(platform: str, args: argparse.Namespace) -> SearchParams:
-    if platform == "upwork":
-        return SearchParams(
-            queries=resolve_search_queries(args.query),
-            limit_per_query=resolve_limit_per_query(args.limit),
-            extras={"debug": args.debug},
-        )
-
-    if platform == "reddit":
-        return SearchParams(
-            queries=[],
-            limit_per_query=resolve_limit_per_query(args.limit),
-            extras={
-                "subreddit": args.subreddit,
-                "flair": args.flair,
-            },
-        )
-
-    raise ConnectorError(f"Unsupported platform for import: {platform}")
+    return build_search_params(platform, args)
 
 
 def cmd_import(argv: list[str] | None = None) -> int:
