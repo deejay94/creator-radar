@@ -11,6 +11,8 @@ services:
         sync: false
       - key: SLACK_WEBHOOK_URL
         sync: false
+      - key: RADAR_NOTIFY_PLATFORMS
+        value: reddit,upwork
       # Required for cross-run dedup on Render (Upstash Redis)
       - key: UPSTASH_REDIS_REST_URL
         sync: false
@@ -18,3 +20,6 @@ services:
         sync: false
       - key: SEEN_STORE_REDIS_KEY
         value: creator-radar:seen
+      # Required for Upwork on Render — mount session JSON via Secret File
+      - key: UPWORK_SESSION_PATH
+        sync: false

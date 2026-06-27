@@ -24,6 +24,19 @@ def test_opportunity_to_notify_json_shape():
     assert json.dumps(payload)
 
 
+def test_opportunity_to_notify_json_upwork():
+    opportunity = Opportunity(
+        platform="upwork",
+        external_id="~0123456789abcdef",
+        title="UGC Creator for skincare brand",
+        url="https://www.upwork.com/jobs/~0123456789abcdef",
+    )
+    payload = opportunity_to_notify_json(opportunity)
+
+    assert payload["platform"] == "upwork"
+    assert payload["external_id"] == "~0123456789abcdef"
+
+
 def test_fetch_eligible_opportunities_skips_filtered_posts():
     eligible = Opportunity(
         platform="reddit",

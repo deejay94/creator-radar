@@ -59,75 +59,116 @@ function resolveRedditSubreddits() {
   return process.env.RADAR_REDDIT_SUBREDDITS?.trim() || "UGCCreators,ugc";
 }
 
-function fetchOpportunities(pythonCommand) {
-  const subreddits = resolveRedditSubreddits();
-  const result = spawnSync(
-    pythonCommand,
-    ["-m", "radar", "notify", "--platform", "reddit", "--subreddit", subreddits],
-    {
-      encoding: "utf-8",
-      env: process.env,
-    },
-  );
+function resolveNotifyPlatforms() {
+  const raw = process.env.RADAR_NOTIFY_PLATFORMS?.trim() || "reddit,upwork";
+  return raw
+    .split(",")
+    .map((platform) => platform.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function buildNotifyArgs(platform) {
+  if (platform === "reddit") {
+    return [
+      "-m",
+      "radar",
+      "notify",
+      "--platform",
+      "reddit",
+      "--subreddit",
+      resolveRedditSubreddits(),
+    ];
+  }
+
+  if (platform === "upwork") {
+    return ["-m", "radar", "notify", "--platform", "upwork", "--headless"];
+  }
+
+  throw new Error(`Unsupported notify platform: ${platform}`);
+}
+
+function fetchOpportunitiesForPlatform(pythonCommand, platform) {
+  let args;
+  try {
+    args = buildNotifyArgs(platform);
+  } catch (error) {
+    console.error(error.message);
+    return null;
+  }
+
+  const result = spawnSync(pythonCommand, args, {
+    encoding: "utf-8",
+    env: process.env,
+  });
 
   if (result.stderr?.trim()) {
     console.error(result.stderr.trim());
   }
 
   if (result.status !== 0) {
-    console.error(`Notify fetch failed with exit code ${result.status ?? "unknown"}`);
+    console.error(
+      `Notify fetch failed for ${platform} with exit code ${result.status ?? "unknown"}`,
+    );
     return null;
   }
 
   try {
     return JSON.parse(result.stdout || "[]");
   } catch (error) {
-    console.error("Failed to parse notify JSON:", error);
+    console.error(`Failed to parse notify JSON for ${platform}:`, error);
     return null;
   }
+}
+
+function fetchAllOpportunities(pythonCommand) {
+  const platforms = resolveNotifyPlatforms();
+  if (platforms.length === 0) {
+    console.error("No notify platforms configured in RADAR_NOTIFY_PLATFORMS");
+    return null;
+  }
+
+  let anySucceeded = false;
+  const combined = [];
+
+  for (const platform of platforms) {
+    console.log(`Fetching ${platform} opportunities...`);
+    const opportunities = fetchOpportunitiesForPlatform(pythonCommand, platform);
+    if (opportunities === null) {
+      continue;
+    }
+
+    anySucceeded = true;
+    console.log(`Fetched ${opportunities.length} ${platform} opportunities`);
+    combined.push(...opportunities);
+  }
+
+  if (!anySucceeded) {
+    return null;
+  }
+
+  return combined;
 }
 
 async function main() {
   loadEnvFile();
 
   console.log("Worker started");
-  const remoteEnabled = isRemoteStoreEnabled();
-  console.log(`Redis dedup store: ${remoteEnabled ? "enabled" : "disabled"}`);
+  console.log(`Redis dedup store: ${isRemoteStoreEnabled() ? "enabled" : "disabled"}`);
+  console.log(`Notify platforms: ${resolveNotifyPlatforms().join(", ")}`);
 
   const store = createSeenOpportunityStore();
-  // #region agent log
-  fetch("http://127.0.0.1:7487/ingest/7631985e-2777-4bcc-91c0-d0567bba16f9", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "84bf78" },
-    body: JSON.stringify({
-      sessionId: "84bf78",
-      runId: "dedup-debug",
-      hypothesisId: "A",
-      location: "worker.js:main",
-      message: "Store backend selected",
-      data: {
-        remoteEnabled,
-        storeType: store.constructor.name,
-        redisKey: process.env.SEEN_STORE_REDIS_KEY || "creator-radar:seen",
-        hasRedisUrl: Boolean(process.env.UPSTASH_REDIS_REST_URL?.trim()),
-        hasRedisToken: Boolean(process.env.UPSTASH_REDIS_REST_TOKEN?.trim()),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   await store.load();
   console.log(`Loaded ${store.count()} previously seen opportunities`);
 
   const pythonCommand = resolvePythonCommand();
-  const opportunities = fetchOpportunities(pythonCommand);
+  const opportunities = fetchAllOpportunities(pythonCommand);
 
   if (opportunities === null) {
     console.log("Worker finished");
     return;
   }
 
-  console.log(`Fetched ${opportunities.length} opportunities`);
+  console.log(`Fetched ${opportunities.length} total opportunities`);
 
   const result = await processNewOpportunities({
     opportunities,

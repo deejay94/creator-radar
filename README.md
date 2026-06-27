@@ -256,21 +256,23 @@ The AI assigns:
 - Actor runs are slower than a direct API call
 - Reddit anti-bot changes may occasionally break the scraper until Apify updates the actor
 
-## Render worker (Reddit → Slack)
+## Render worker (Reddit + Upwork → Slack)
 
-A Node.js worker fetches Reddit opportunities via the Python CLI, deduplicates with a seen-opportunity store (local JSON or Upstash Redis on Render), sends **one batch Slack message** for new opportunities only, and persists seen keys after a successful send. Render Cron triggers it externally — no internal scheduler.
+A Node.js worker fetches Reddit and Upwork opportunities via the Python CLI, deduplicates with a seen-opportunity store (local JSON or Upstash Redis on Render), sends **one batch Slack message** for new opportunities only, and persists seen keys after a successful send. Render Cron triggers it externally — no internal scheduler.
 
-Requires **Node 18+**, **Python 3**, and `bash build.sh` (or `npm install` locally).
+Requires **Node 18+**, **Python 3**, and `bash build.sh` (installs Playwright Chromium for Upwork).
 
 ### Local development (recommended)
 
 Dedup state lives in **`seen_opportunities.json`** in the repo root (gitignored). No Redis needed locally.
 
 1. Copy env vars into `.env` (`APIFY_API_TOKEN`, `SLACK_WEBHOOK_URL`)
-2. Install deps:
+2. For Upwork, log in locally and save a session:
 
 ```bash
 bash build.sh
+python -m radar upwork login
+python -m radar upwork status
 ```
 
 3. Run the worker:
@@ -279,12 +281,18 @@ bash build.sh
 node worker.js
 ```
 
-4. Run again — same posts should log `No new opportunities found.` and skip Slack. Check `seen_opportunities.json` for keys like `"reddit:abc123": true`.
+4. Run again — same posts/jobs should log `No new opportunities found.` and skip Slack.
 
 To reset dedup locally, delete the file:
 
 ```bash
 rm seen_opportunities.json
+```
+
+Reddit-only worker run:
+
+```bash
+RADAR_NOTIFY_PLATFORMS=reddit node worker.js
 ```
 
 ### Dedup architecture
@@ -296,12 +304,13 @@ rm seen_opportunities.json
 - Opportunities are marked seen **only after Slack succeeds**
 - Persist failure after Slack exits non-zero so the next run does not silently re-notify
 
-**Env vars:** `APIFY_API_TOKEN`, `SLACK_WEBHOOK_URL`, optional `RADAR_REDDIT_SUBREDDITS`, optional `SEEN_OPPORTUNITIES_PATH` (local file, default `seen_opportunities.json`), optional `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` + `SEEN_STORE_REDIS_KEY` (Render).
+**Env vars:** `APIFY_API_TOKEN`, `SLACK_WEBHOOK_URL`, optional `RADAR_NOTIFY_PLATFORMS` (default `reddit,upwork`), optional `RADAR_REDDIT_SUBREDDITS`, optional `UPWORK_SESSION_PATH`, optional `RADAR_UPWORK_SEARCH_QUERIES`, optional `RADAR_UPWORK_LIMIT_PER_QUERY`, optional `SEEN_OPPORTUNITIES_PATH` (local file), optional Upstash Redis vars (Render).
 
 Manual fetch:
 
 ```bash
 python -m radar notify --platform reddit --subreddit UGCCreators,ugc
+python -m radar notify --platform upwork --headless
 ```
 
 Worker tests:
@@ -338,7 +347,11 @@ Render cron containers use an **ephemeral filesystem** — a local JSON file is 
 | `UPSTASH_REDIS_REST_URL` | Yes (Render) | From Upstash dashboard |
 | `UPSTASH_REDIS_REST_TOKEN` | Yes (Render) | From Upstash dashboard |
 | `SEEN_STORE_REDIS_KEY` | Optional | Redis SET key (default: `creator-radar:seen`) |
+| `RADAR_NOTIFY_PLATFORMS` | Optional | Default: `reddit,upwork` |
 | `RADAR_REDDIT_SUBREDDITS` | Optional | Default: `UGCCreators,ugc` |
+| `UPWORK_SESSION_PATH` | Yes (if Upwork enabled) | Playwright session JSON from local `upwork login` |
+| `RADAR_UPWORK_SEARCH_QUERIES` | Optional | Comma-separated Upwork queries |
+| `RADAR_UPWORK_LIMIT_PER_QUERY` | Optional | Default: `20` |
 
 #### Upstash Redis setup
 
@@ -355,7 +368,15 @@ Render cron containers use an **ephemeral filesystem** — a local JSON file is 
 2. **Manual Trigger** again — logs should include:
    - `Loaded N previously seen opportunities` (N > 0)
    - `No new opportunities found.` (no Slack message)
-3. In Upstash console, SET `creator-radar:seen` should contain members like `reddit:abc123`
+3. In Upstash console, SET `creator-radar:seen` should contain members like `reddit:abc123` or `upwork:~jobid`
+
+#### Upwork on Render
+
+Upwork uses headless Playwright with a pre-exported session file. Interactive login does not work on Render.
+
+1. Locally: `python -m radar upwork login` → creates `~/.creator-radar/upwork-session.json`
+2. Upload that file to Render as a **Secret File** and set `UPWORK_SESSION_PATH` to its mounted path
+3. Headless Upwork search may return fewer jobs or hit CAPTCHA — monitor logs after deploy
 
 Without Redis on Render, every cron run starts with an empty seen store and **will re-send the same posts**. Local development can use repo-root `seen_opportunities.json` without Redis.
 
